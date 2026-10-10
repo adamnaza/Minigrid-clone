@@ -1,4 +1,5 @@
 import gymnasium as gym
+import minigrid
 
 
 def make_env(env_key, seed=None, render_mode=None):
