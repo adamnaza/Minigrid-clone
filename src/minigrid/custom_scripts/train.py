@@ -1,9 +1,3 @@
-"""Custom-task entry point, copied from rl_starter_files/scripts/train.py.
-
-Original PPO/model/logging flow retained. Changes: local registration/defaults,
-CPU/thread selection, configuration recording, milestone/final saves, cleanup.
-Run from the repository root: uv run python -m minigrid.custom_scripts.train --model <name>.
-"""
 import json
 import gymnasium as gym
 import multiprocessing as mp
@@ -88,6 +82,8 @@ parser.add_argument("--checkpoint-frames", type=int, nargs="*", default=[1000000
 
 if __name__ == "__main__":
     args = parser.parse_args()
+
+    # get reward config from pickup_tasks.py
     reward_config = {name: getattr(args, name) for name in REWARD_DEFAULTS}
     torch.set_num_threads(args.threads)
     torch.set_num_interop_threads(1)
@@ -130,7 +126,6 @@ if __name__ == "__main__":
     txt_logger.info(f"Device: {device}\n")
 
     # Load environments
-
     envs = []
     for i in range(args.procs):
         env = gym.make(args.env, **reward_config)
@@ -139,7 +134,6 @@ if __name__ == "__main__":
     txt_logger.info("Environments loaded\n")
 
     # Load training status
-
     try:
         status = torch.load(checkpoint_path, map_location=device, weights_only=True)
     except OSError:
@@ -147,7 +141,7 @@ if __name__ == "__main__":
     txt_logger.info("Training status loaded\n")
 
     # Load observations preprocessor
-
+    # preprocessor converts observations into numerical tensors for the model
     obs_space, preprocess_obss = utils.get_obss_preprocessor(envs[0].observation_space)
     if "vocab" in status:
         preprocess_obss.vocab.load_vocab(status["vocab"])
@@ -190,6 +184,7 @@ if __name__ == "__main__":
     update = status["update"]
     start_time = time.time()
 
+    # save checkpoints at epoch steps
     milestones = sorted(set(n for n in args.checkpoint_frames if num_frames < n <= args.frames))
 
     def save_status(filename="status.pt"):
