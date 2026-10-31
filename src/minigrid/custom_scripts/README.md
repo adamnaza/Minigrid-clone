@@ -5,9 +5,6 @@ color-negation pickup instructions, using `BabyAI-PickupDist-v0` as the base.
 Evaluation is deferred. **FLAN-T5-base is selected for the frozen-LLM agent, but
 that agent is not implemented yet.**
 
-Project choices are recorded in [PROJECT_DECISIONS.md](../PROJECT_DECISIONS.md);
-the broader scope is in [COURSE_PROJECT.md](../COURSE_PROJECT.md).
-
 ## Files and responsibilities
 
 | File | What it does |
@@ -202,7 +199,7 @@ no frozen-LLM implementation or command yet.
 The design under discussion is to use the frozen encoder, pool token vectors while
 excluding padding, and train a 768-to-128 projection before concatenating with CNN
 features. Pooling, projection, caching, precision, and implementation details remain
-to be finalized. See D029 in [PROJECT_DECISIONS.md](../PROJECT_DECISIONS.md).
+to be finalized.
 
 Evaluation will focus on return over repeated unseen-instruction episodes. Its scene
 count, instruction-selection interface, and scripts are deferred. `or` and counting
