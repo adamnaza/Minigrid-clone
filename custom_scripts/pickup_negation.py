@@ -9,7 +9,7 @@ from gymnasium import spaces
 from minigrid.envs.babyai.pickup import PickupDist
 from minigrid.envs.babyai.core.verifier import ObjDesc, PickupInstr
 
-from custom_scripts.pickup_tasks import CONFIG, COLORS, TYPES, TASK_BY_ID, TRAIN_TASKS, REWARD_DEFAULTS
+from custom_scripts.pickup_tasks import CONFIG, COLORS, TYPES, TRAIN_TASKS, REWARD_DEFAULTS
 
 # inherits from ObjDesc class in babyai -> verifier.py
 # ObjDesc already knows how to find objects by type/color with find_matching_objs()
@@ -50,35 +50,21 @@ class TaskPickupInstr(PickupInstr):
 
 
 class PickupNegation(PickupDist):
-    def __init__(self, split="train", render_mode=None,
+    def __init__(self, render_mode=None,
                  correct_reward=REWARD_DEFAULTS["correct_reward"],
                  wrong_reward=REWARD_DEFAULTS["wrong_reward"],
                  step_cost=REWARD_DEFAULTS["step_cost"]):
-        if split not in ("train", "test"):
-            raise ValueError("split must be train or test")
-        self.split = split
         self.correct_reward = correct_reward
         self.wrong_reward = wrong_reward
         self.step_cost = step_cost
-        self._requested_task = None
         super().__init__(max_steps=CONFIG["max_steps"], render_mode=render_mode)
         self.action_space = spaces.Discrete(len(CONFIG["actions"]))
         self.reward_range = (wrong_reward - step_cost, correct_reward - step_cost)
 
-    def reset(self, *, seed=None, options=None):
-        options = options or {}
-        task_id = options.get("task")
-        if self.split == "train" and task_id is not None:
-            raise ValueError("Training samples its own instructions; use the test environment for explicit tasks")
-        if self.split == "test" and task_id not in TASK_BY_ID:
-            raise ValueError("Testing requires options={'task': <valid task ID>}")
-        self._requested_task = TASK_BY_ID[task_id] if task_id is not None else None
-        return super().reset(seed=seed, options=options)
-
     def _gen_grid(self, width, height):
         # MiniGrid has seeded its RNG before calling this method. Select once,
         # outside RoomGridLevel's rejection loop, so retries cannot change the task.
-        self.task = self._requested_task or self._rand_elem(TRAIN_TASKS)
+        self.task = self._rand_elem(TRAIN_TASKS)
         super()._gen_grid(width, height)
 
     def gen_mission(self):
