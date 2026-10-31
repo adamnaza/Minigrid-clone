@@ -1,9 +1,3 @@
-"""PickupDist variant using existing room generation, physics, and pickup verification.
-
-Based on minigrid/envs/babyai/pickup.py and core/verifier.py. Only mission
-generation, description matching, action space, and rewards are specialized.
-"""
-
 from gymnasium import spaces
 
 from minigrid.envs.babyai.pickup import PickupDist
