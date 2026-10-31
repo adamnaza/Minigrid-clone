@@ -25,3 +25,13 @@ _build/
 .env
 .venv
 venv
+
+# Agents
+.agents
+.aws
+.codex
+
+# Local experiment outputs and verification artifacts
+runs/
+results/
+misc/

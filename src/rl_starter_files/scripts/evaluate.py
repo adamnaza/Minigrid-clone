@@ -3,8 +3,8 @@ import time
 import torch
 from torch_ac.utils.penv import ParallelEnv
 
-import utils
-from utils import device
+from rl_starter_files import utils
+from rl_starter_files.utils import device
 
 
 # Parse arguments

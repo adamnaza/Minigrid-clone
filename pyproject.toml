@@ -24,7 +24,14 @@ classifiers = [
     "Topic :: Scientific/Engineering :: Artificial Intelligence",
     "Operating System :: OS Independent",
 ]
-dependencies = ["numpy>=1.18.0", "gymnasium>=0.28.1", "pygame-ce>=2.4.0"]
+dependencies = [
+    "numpy>=1.18.0",
+    "gymnasium>=0.28.1",
+    "pygame-ce>=2.4.0",
+    "torch",
+    "torch-ac>=1.4.0",
+    "tensorboardX>=1.6",
+]
 dynamic = ["version"]
 
 [project.optional-dependencies]
@@ -39,9 +46,14 @@ Documentation = "https://minigrid.farama.org/"
 
 [tool.setuptools]
 include-package-data = true
+package-dir = {"" = "src"}
 
 [tool.setuptools.packages.find]
-include = ["minigrid*"]
+where = ["src"]
+include = ["minigrid*", "rl_starter_files*"]
+
+[tool.setuptools.dynamic]
+version = {attr = "minigrid.__version__"}
 
 # Linters and Test tools #######################################################
 
@@ -51,11 +63,11 @@ include = ["minigrid*"]
 atomic = true
 profile = "black"
 append_only = true
-src_paths = ["minigrid", "tests"]
+src_paths = ["src", "tests"]
 add_imports = ["from __future__ import annotations"]
 
 [tool.pyright]
-include = ["minigrid/**"]
+include = ["src/minigrid/**"]
 
 exclude = ["**/node_modules", "**/__pycache__"]
 

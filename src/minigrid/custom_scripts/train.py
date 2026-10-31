@@ -6,10 +6,9 @@ from pathlib import Path
 import sys
 import torch
 
-from custom_scripts import TRAIN_ENV
-from custom_scripts.pickup_tasks import CONFIG, TRAIN_TASKS, REWARD_DEFAULTS
+from minigrid.custom_scripts import TRAIN_ENV
+from minigrid.custom_scripts.pickup_tasks import CONFIG, TRAIN_TASKS, REWARD_DEFAULTS
 
-sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "rl-starter-files"))
 os.environ.setdefault("RL_STORAGE", str(Path(__file__).resolve().parent / "runs"))
 
 import argparse
@@ -18,8 +17,8 @@ import datetime
 import torch_ac
 import tensorboardX
 
-import utils
-from model import ACModel
+from rl_starter_files import utils
+from rl_starter_files.model import ACModel
 
 
 # Parse arguments

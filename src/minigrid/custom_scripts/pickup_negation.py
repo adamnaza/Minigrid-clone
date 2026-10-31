@@ -3,7 +3,7 @@ from gymnasium import spaces
 from minigrid.envs.babyai.pickup import PickupDist
 from minigrid.envs.babyai.core.verifier import ObjDesc, PickupInstr
 
-from custom_scripts.pickup_tasks import CONFIG, COLORS, TYPES, TRAIN_TASKS, REWARD_DEFAULTS
+from minigrid.custom_scripts.pickup_tasks import CONFIG, COLORS, TYPES, TASK_BY_ID, TRAIN_TASKS, REWARD_DEFAULTS
 
 # inherits from ObjDesc class in babyai -> verifier.py
 # ObjDesc already knows how to find objects by type/color with find_matching_objs()

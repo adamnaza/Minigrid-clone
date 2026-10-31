@@ -5,9 +5,6 @@ color-negation pickup instructions, using `BabyAI-PickupDist-v0` as the base.
 Evaluation is deferred. **FLAN-T5-base is selected for the frozen-LLM agent, but
 that agent is not implemented yet.**
 
-Project choices are recorded in [PROJECT_DECISIONS.md](../PROJECT_DECISIONS.md);
-the broader scope is in [COURSE_PROJECT.md](../COURSE_PROJECT.md).
-
 ## Files and responsibilities
 
 | File | What it does |
@@ -17,7 +14,7 @@ the broader scope is in [COURSE_PROJECT.md](../COURSE_PROJECT.md).
 | [__init__.py](__init__.py) | Registers the training environment as `BabyAI-PickupNegation-v0` when the package is imported. |
 | [train.py](train.py) | Adapts the starter training script to create our environments, run PPO, log statistics, and save/resume checkpoints. |
 
-The model comes from [rl-starter-files/model.py](../rl-starter-files/model.py).
+The model comes from [rl_starter_files/model.py](../../rl_starter_files/model.py).
 The trainer also reuses the starter's observation preprocessing and logging
 utilities, and uses `torch_ac` for experience collection and PPO updates.
 
@@ -103,20 +100,31 @@ Internal target lists and task matching rules are not supplied to the policy.
 
 ## Run training
 
-Run commands from the repository root with the existing virtual environment:
+Run commands from the repository root (the directory containing `pyproject.toml`).
+Install the project dependencies first; uv creates and manages `.venv`, so no
+manual activation is needed:
+
+```bash
+uv sync
+```
+
+For installation instructions and automated test commands, see the
+[uv run guide](../../../UV_GUIDE.md).
+
+Run training with:
 
 ```bash
 # Short smoke run in a separate directory.
-.venv/bin/python -m custom_scripts.train --model gru_smoke --frames 4096
+uv run python -m minigrid.custom_scripts.train --model gru_smoke --frames 4096
 
 # Fresh pilot with the default 3M total environment-step budget.
-.venv/bin/python -m custom_scripts.train --model gru_pilot --seed 1
+uv run python -m minigrid.custom_scripts.train --model gru_pilot --seed 1
 
 # Continue the same run to 5M TOTAL steps, not another 5M.
-.venv/bin/python -m custom_scripts.train --model gru_pilot --seed 1 --frames 5000000 --checkpoint-frames 4000000 5000000
+uv run python -m minigrid.custom_scripts.train --model gru_pilot --seed 1 --frames 5000000 --checkpoint-frames 4000000 5000000
 
 # Separate experiment with an action cost.
-.venv/bin/python -m custom_scripts.train --model gru_step_cost --seed 1 --step-cost 0.01
+uv run python -m minigrid.custom_scripts.train --model gru_step_cost --seed 1 --step-cost 0.01
 ```
 
 Use a new model name for a fresh run. Reusing a directory containing `status.pt`
@@ -141,7 +149,7 @@ Text processing is enabled by default in this custom trainer.
 
 ## Logs and checkpoints
 
-Outputs default to `custom_scripts/runs/<model>/`. An existing `RL_STORAGE`
+Outputs default to `src/minigrid/custom_scripts/runs/<model>/`. An existing `RL_STORAGE`
 environment variable overrides this location. The local `runs/` and `results/`
 folders are ignored by Git.
 
@@ -191,7 +199,7 @@ no frozen-LLM implementation or command yet.
 The design under discussion is to use the frozen encoder, pool token vectors while
 excluding padding, and train a 768-to-128 projection before concatenating with CNN
 features. Pooling, projection, caching, precision, and implementation details remain
-to be finalized. See D029 in [PROJECT_DECISIONS.md](../PROJECT_DECISIONS.md).
+to be finalized.
 
 Evaluation will focus on return over repeated unseen-instruction episodes. Its scene
 count, instruction-selection interface, and scripts are deferred. `or` and counting
