@@ -1,8 +1,8 @@
 import torch
 
-import utils
+from rl_starter_files import utils
 from .other import device
-from model import ACModel
+from rl_starter_files.model import ACModel
 
 
 class Agent:

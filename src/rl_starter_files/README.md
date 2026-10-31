@@ -48,7 +48,7 @@ Train, visualize and evaluate an agent on the `MiniGrid-DoorKey-5x5-v0` environm
 1. Train the agent on the `MiniGrid-DoorKey-5x5-v0` environment with PPO algorithm:
 
 ```
-python3 -m scripts.train --algo ppo --env MiniGrid-DoorKey-5x5-v0 --model DoorKey --save-interval 10 --frames 80000
+uv run python -m rl_starter_files.scripts.train --algo ppo --env MiniGrid-DoorKey-5x5-v0 --model DoorKey --save-interval 10 --frames 80000
 ```
 
 <p align="center"><img src="README-rsrc/train-terminal-logs.png"></p>
@@ -56,7 +56,7 @@ python3 -m scripts.train --algo ppo --env MiniGrid-DoorKey-5x5-v0 --model DoorKe
 2. Visualize agent's behavior:
 
 ```
-python3 -m scripts.visualize --env MiniGrid-DoorKey-5x5-v0 --model DoorKey
+uv run python -m rl_starter_files.scripts.visualize --env MiniGrid-DoorKey-5x5-v0 --model DoorKey
 ```
 
 <p align="center"><img src="README-rsrc/visualize-doorkey.gif"></p>
@@ -64,7 +64,7 @@ python3 -m scripts.visualize --env MiniGrid-DoorKey-5x5-v0 --model DoorKey
 3. Evaluate agent's performance:
 
 ```
-python3 -m scripts.evaluate --env MiniGrid-DoorKey-5x5-v0 --model DoorKey
+uv run python -m rl_starter_files.scripts.evaluate --env MiniGrid-DoorKey-5x5-v0 --model DoorKey
 ```
 
 <p align="center"><img src="README-rsrc/evaluate-terminal-logs.png"></p>
@@ -78,7 +78,7 @@ python3 -m scripts.evaluate --env MiniGrid-DoorKey-5x5-v0 --model DoorKey
 In the `GoToDoor` environment, the agent receives an image along with a textual instruction. To handle the latter, add `--text` to the command:
 
 ```
-python3 -m scripts.train --algo ppo --env MiniGrid-GoToDoor-5x5-v0 --model GoToDoor --text --save-interval 10 --frames 1000000
+uv run python -m rl_starter_files.scripts.train --algo ppo --env MiniGrid-GoToDoor-5x5-v0 --model GoToDoor --text --save-interval 10 --frames 1000000
 ```
 
 <p align="center"><img src="README-rsrc/visualize-gotodoor.gif"></p>
@@ -88,7 +88,7 @@ python3 -m scripts.train --algo ppo --env MiniGrid-GoToDoor-5x5-v0 --model GoToD
 In the `RedBlueDoors` environment, the agent has to open the red door then the blue one. To solve it efficiently, when it opens the red door, it has to remember it. To add memory to the agent, add `--recurrence X` to the command:
 
 ```
-python3 -m scripts.train --algo ppo --env MiniGrid-RedBlueDoors-6x6-v0 --model RedBlueDoors --recurrence 4 --save-interval 10 --frames 1000000
+uv run python -m rl_starter_files.scripts.train --algo ppo --env MiniGrid-RedBlueDoors-6x6-v0 --model RedBlueDoors --recurrence 4 --save-interval 10 --frames 1000000
 ```
 
 <p align="center"><img src="README-rsrc/visualize-redbluedoors.gif"></p>
@@ -117,7 +117,7 @@ These files are suited for [`minigrid`](https://github.com/Farama-Foundation/Min
 An example of use:
 
 ```bash
-python3 -m scripts.train --algo ppo --env MiniGrid-DoorKey-5x5-v0 --model DoorKey --save-interval 10 --frames 80000
+uv run python -m rl_starter_files.scripts.train --algo ppo --env MiniGrid-DoorKey-5x5-v0 --model DoorKey --save-interval 10 --frames 80000
 ```
 
 The script loads the model in `storage/DoorKey` or creates it if it doesn't exist, then trains it with the PPO algorithm on the MiniGrid DoorKey environment, and saves it every 10 updates in `storage/DoorKey`. It stops after 80 000 frames.
@@ -148,7 +148,7 @@ During training, logs are also plotted in Tensorboard:
 An example of use:
 
 ```
-python3 -m scripts.visualize --env MiniGrid-DoorKey-5x5-v0 --model DoorKey
+uv run python -m rl_starter_files.scripts.visualize --env MiniGrid-DoorKey-5x5-v0 --model DoorKey
 ```
 
 <p align="center"><img src="README-rsrc/visualize-doorkey.gif"></p>
@@ -168,7 +168,7 @@ and a bunch of optional arguments among which:
 An example of use:
 
 ```
-python3 -m scripts.evaluate --env MiniGrid-DoorKey-5x5-v0 --model DoorKey
+uv run python -m rl_starter_files.scripts.evaluate --env MiniGrid-DoorKey-5x5-v0 --model DoorKey
 ```
 
 <p align="center"><img src="README-rsrc/evaluate-terminal-logs.png"></p>

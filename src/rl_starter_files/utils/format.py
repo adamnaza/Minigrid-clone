@@ -6,7 +6,7 @@ import torch
 import torch_ac
 import gymnasium as gym
 
-import utils
+from rl_starter_files import utils
 
 
 def get_obss_preprocessor(obs_space):
