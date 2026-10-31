@@ -2,7 +2,7 @@
 
 Original PPO/model/logging flow retained. Changes: local registration/defaults,
 CPU/thread selection, configuration recording, milestone/final saves, cleanup.
-Run from the repository root: python -m custom_scripts.train --model <name>.
+Run from the repository root: uv run python -m minigrid.custom_scripts.train --model <name>.
 """
 import json
 import gymnasium as gym
@@ -12,10 +12,10 @@ from pathlib import Path
 import sys
 import torch
 
-from custom_scripts import TRAIN_ENV
-from custom_scripts.pickup_tasks import CONFIG, TRAIN_TASKS, REWARD_DEFAULTS
+from minigrid.custom_scripts import TRAIN_ENV
+from minigrid.custom_scripts.pickup_tasks import CONFIG, TRAIN_TASKS, REWARD_DEFAULTS
 
-sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "rl-starter-files"))
+sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "rl-starter-files"))
 os.environ.setdefault("RL_STORAGE", str(Path(__file__).resolve().parent / "runs"))
 
 import argparse
