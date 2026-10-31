@@ -20,6 +20,10 @@ Note that the library was previously known as gym-minigrid and it has been refer
 
 See the [Project Roadmap](https://github.com/Farama-Foundation/Minigrid/issues/363) for details regarding the long-term plans.
 
+# Local development with uv
+
+See [the uv run guide](UV_GUIDE.md) for environment setup, automated tests, training, and agent evaluation in this checkout.
+
 # Installation
 
 To install the Minigrid library use `pip install minigrid`.
