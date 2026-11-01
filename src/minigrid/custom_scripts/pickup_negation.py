@@ -67,11 +67,17 @@ class PickupNegation(PickupDist):
         # determines the min and max reward possible for an action
         self.reward_range = (wrong_reward - step_cost, correct_reward - step_cost)
 
+    def reset(self, *, seed=None, options=None):
+        # Evaluation can select a task; ordinary resets still sample training tasks.
+        task_id = (options or {}).get("task")
+        self._selected_task = TASK_BY_ID[task_id] if task_id is not None else None
+        return super().reset(seed=seed, options=options)
+
     # choose an instruction, then generate an environment to satisfy it
     def _gen_grid(self, width, height):
         # MiniGrid has seeded its RNG before calling this method. Select once,
         # outside RoomGridLevel's rejection loop, so retries cannot change the task.
-        self.task = self._rand_elem(TRAIN_TASKS)
+        self.task = self._selected_task or self._rand_elem(TRAIN_TASKS)
         # calls our gen_mission override to create environments
         super()._gen_grid(width, height)
 

@@ -129,8 +129,8 @@ architecture: custom training uses text by default, so evaluation needs `--text`
 if training used `--recurrence` greater than 1, also pass `--memory`.
 
 This measures performance on the training distribution, not held-out negation
-generalization. Only `BabyAI-PickupNegation-v0` is currently registered; explicit
-held-out task selection and its evaluation loop remain deferred. The wrapper above
+generalization. Only `BabyAI-PickupNegation-v0` is registered; the custom evaluator explicitly
+selects held-out instructions through reset options. The wrapper above
 is for the GRU/CNN agent, not the frozen FLAN model.
 
 For frozen FLAN training, install and retain the LLM extra:
@@ -144,7 +144,16 @@ uv run --extra llm python -m minigrid.custom_scripts.train \
 
 The first run downloads FLAN-T5-base; it stays frozen while the projection, CNN,
 actor, and critic train. See the [custom scripts README](src/minigrid/custom_scripts/README.md)
-for full training, resuming, and the deferred FLAN evaluation entry point.
+for full training and resuming. Evaluate both architectures on held-out instructions with:
+
+```bash
+uv run --extra llm python -m minigrid.custom_scripts.evaluate
+```
+
+This reads final checkpoints from `$RL_STORAGE/reward_sweep/` when `RL_STORAGE` is
+set, otherwise from `src/minigrid/custom_scripts/runs/reward_sweep/`. Use `--runs-dir`
+to specify another directory. Default results go under
+`src/minigrid/custom_scripts/results/evaluation/`.
 
 ## 6. Train, evaluate, and watch a standard MiniGrid agent
 
@@ -177,8 +186,8 @@ trained with `--text` or recurrent memory, pass the matching `--text` and/or
 - **Model shape mismatch:** match text/memory flags to training and use the same
   environment observation/action spaces.
 - **Custom environment not registered:** use the registration wrapper in step 5.
-- **Held-out evaluation:** there is no registered test environment yet; the current
-  custom environment samples training instructions only.
+- **Held-out evaluation:** use `minigrid.custom_scripts.evaluate`; the starter
+  evaluator samples training instructions and supports only the GRU model.
 - **FLAN dependencies:** retain `--extra llm` on uv commands used for this agent.
 - **CUDA unavailable:** the installed PyTorch CUDA build must be supported by the
   NVIDIA driver. CPU smoke tests can run even when CUDA is unavailable.

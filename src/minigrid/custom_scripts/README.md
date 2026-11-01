@@ -3,7 +3,7 @@
 This folder trains **GRU/CNN and frozen FLAN-T5/CNN agents** on positive and
 color-negation pickup instructions, using `BabyAI-PickupDist-v0` as the base.
 Both agents share the environment, rewards, PPO loop, and downstream architecture.
-Held-out evaluation and the full-LLM agent remain deferred.
+Held-out evaluation is available for both agents; the full-LLM agent remains deferred.
 
 ## Files and responsibilities
 
@@ -15,6 +15,7 @@ Held-out evaluation and the full-LLM agent remain deferred.
 | [frozen_llm_model.py](frozen_llm_model.py) | Reuses the starter actor-critic, replacing GRU text processing with frozen FLAN, masked mean pooling, and a learned linear projection. |
 | [frozen_llm_preprocessor.py](frozen_llm_preprocessor.py) | Tokenizes missions with FLAN’s tokenizer, supplies attention masks, and reuses image preprocessing. |
 | [train.py](train.py) | Selects the agent and adapts the starter training script to create our environments, run PPO, log statistics, and save/resume checkpoints. |
+| [evaluate.py](evaluate.py) | Evaluates final checkpoints on shared held-out instructions/scenes and writes episode and summary CSVs with original and common returns. |
 | [run_reward_sweep.py](run_reward_sweep.py) | Runs the eight reward configurations for both agents sequentially, with separate run directories. |
 
 The GRU model comes from [rl_starter_files/model.py](../../rl_starter_files/model.py).
@@ -54,10 +55,11 @@ key. For `pick up a ball that is not red`, they could be a red ball, blue ball,
 and green key. Extra random objects can also be valid targets for negation.
 Scene-first instruction selection was discussed but has not been implemented.
 
-The environment uses BabyAI's inherited `reset()`, always sampling from
-`TRAIN_TASKS`. There is no train/test mode, explicit test-task selection, or saved
-scene manifest. The seed controls the random sequence; each subsequent reset
-produces another instruction and scene.
+Ordinary `reset()` calls sample from `TRAIN_TASKS` as before. Evaluation can select
+an instruction with `reset(seed=0, options={"task": "negative:purple:ball"})`.
+This override applies only to that reset; the next reset without a task samples
+training instructions again. No separate test environment or saved manifest is
+required. The seed controls random scene generation.
 
 `CONFIG["max_steps"]` and the configured action count are used directly. The room
 size comes from `PickupDist`, and the object count comes from the placement code;
@@ -254,8 +256,7 @@ its pretrained tokenizer, not the GRU's learned word-ID vocabulary.
 
 Use the same `--agent`, `--llm-model`, and `--llm-revision` when resuming a FLAN run.
 Use a distinct model directory for each agent. The starter evaluator/visualizer
-constructs the GRU architecture and **cannot load FLAN checkpoints**; a matching
-evaluation entry point is deferred.
+constructs the GRU architecture and **cannot load FLAN checkpoints**; evaluation for both agents is provided by `minigrid.custom_scripts.evaluate`.
 
 Offline model tests use a tiny local T5 and require no model download:
 
@@ -327,8 +328,79 @@ logging, and checkpoint intervals retain the shared trainer's defaults.
 Compare agents within each reward configuration; raw returns across different
 reward scales are not directly comparable measures of task performance.
 
-## Later evaluation
+## Evaluate trained agents
 
-Evaluation will focus on return over repeated unseen-instruction episodes. Its scene
-count, instruction-selection interface, and scripts are deferred. `or` and counting
-tasks and the full-LLM policy remain later project work.
+Evaluate every `*/status.pt` under the reward-sweep directory:
+
+```bash
+uv run --extra llm python -m minigrid.custom_scripts.evaluate
+```
+
+The default input directory matches the sweep: `src/minigrid/custom_scripts/runs/reward_sweep/`,
+or `$RL_STORAGE/reward_sweep/` if set. Use `--runs-dir` for another sweep directory.
+The evaluator reads model type, original rewards, and FLAN model/revision from each
+checkpoint. It loads GRU vocabularies rather than building new ones. Model weights
+stay fixed, dropout is disabled, and actions are sampled from the policy.
+
+Defaults are CUDA, four CPU threads, all nine unseen negations, and scene seeds
+0–19 for each instruction: **180 episodes per checkpoint**, or **2,880 for 16 runs**.
+The existing 500-action limit, five-action set, partial view, and recovery after
+wrong pickups are retained. Final checkpoints currently contain 3,000,320 steps.
+
+Scene generation is identical across agents for the same instruction/scene seed.
+Action-sampling seeds are `20 × instruction_index + scene_seed`, giving 0–179.
+Instruction order is purple, yellow, grey, with ball, key, box within each color.
+Subset checks keep the same mapping. Different policies can still choose different
+actions; repeatability assumes the same software and device. Different scene seeds
+do not guarantee distinct layouts.
+
+To evaluate one checkpoint, or perform a small execution check:
+
+```bash
+uv run --extra llm python -m minigrid.custom_scripts.evaluate \
+  --checkpoint src/minigrid/custom_scripts/runs/reward_sweep/gru_wrong2_cost1_seed0/status.pt \
+  --tasks negative:purple:ball --scene-seeds 0 1 \
+  --output-dir misc/evaluation_smoke --device cpu
+```
+
+Each episode produces both scores from the **same trajectory**:
+
+- **Original return:** sum of environment rewards, using the checkpoint's training
+  reward settings, including its per-action cost.
+- **Common return:** `10 × completion − 2 × wrong_pickups`, with no action cost.
+
+Outputs default to `src/minigrid/custom_scripts/results/evaluation/`; override
+with `--output-dir`. There is one subdirectory per training run:
+
+```text
+results/evaluation/
+├── gru_wrong2_cost0_seed0/
+│   ├── episodes.csv
+│   └── summary.csv
+└── frozen-flan_wrong2_cost0_seed0/
+    ├── episodes.csv
+    └── summary.csv
+```
+
+`episodes.csv` records the checkpoint path, training step count, agent, device,
+original reward settings, instruction, both seeds, both returns, episode length,
+wrong pickups, success, and timeout. A correct pickup on the last allowed step
+counts as success rather than a timeout. Rows are saved after every episode.
+
+`summary.csv` contains one row per instruction plus an overall row: episode count,
+mean and population standard deviation of both returns, mean length and wrong
+pickups, and diagnostic success/timeout rates. Summary values use individual
+episodes, not training-log windows. No plots are generated automatically.
+
+Rerunning evaluation replaces that run's CSVs; it does not resume partial episode
+lists. Use separate output directories for earlier checkpoints or different test
+settings. The training checkpoints are read only. Summary files appear only after
+that checkpoint's evaluation finishes successfully.
+
+Focused offline checks:
+
+```bash
+uv run --extra llm --extra testing pytest tests/test_evaluate.py tests/test_frozen_llm.py -q
+```
+
+`or`, counting tasks, and the full-LLM policy remain later project work.
