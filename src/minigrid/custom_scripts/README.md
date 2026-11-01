@@ -15,6 +15,7 @@ Held-out evaluation and the full-LLM agent remain deferred.
 | [frozen_llm_model.py](frozen_llm_model.py) | Reuses the starter actor-critic, replacing GRU text processing with frozen FLAN, masked mean pooling, and a learned linear projection. |
 | [frozen_llm_preprocessor.py](frozen_llm_preprocessor.py) | Tokenizes missions with FLAN’s tokenizer, supplies attention masks, and reuses image preprocessing. |
 | [train.py](train.py) | Selects the agent and adapts the starter training script to create our environments, run PPO, log statistics, and save/resume checkpoints. |
+| [run_reward_sweep.py](run_reward_sweep.py) | Runs the eight reward configurations for both agents sequentially, with separate run directories. |
 
 The GRU model comes from [rl_starter_files/model.py](../../rl_starter_files/model.py).
 The trainer also reuses the starter's observation preprocessing and logging
@@ -261,6 +262,70 @@ Offline model tests use a tiny local T5 and require no model download:
 ```bash
 uv run --extra llm --extra testing pytest tests/test_frozen_llm.py -q
 ```
+
+## Reward sweep: both agents, eight configurations each
+
+Preview all commands without starting training:
+
+```bash
+uv run --extra llm python -m minigrid.custom_scripts.run_reward_sweep --dry-run
+```
+
+Start the full sweep:
+
+```bash
+uv run --extra llm python -m minigrid.custom_scripts.run_reward_sweep
+```
+
+This runs **16 separate training jobs sequentially** (GRU first, then frozen FLAN),
+each with 3 million total environment steps, seed 0, and `--device cuda`.
+The other exposed training settings match the existing trainer defaults. The full
+sweep requests 48 million steps, with each run rounded up to a complete rollout.
+
+Each agent uses all combinations below, always with correct-pickup reward +10:
+
+| Wrong-pickup reward | Per-action reward | Trainer's `--step-cost` |
+|---:|---:|---:|
+| −2 | 0 | 0 |
+| −2 | −1 | 1 |
+| −2 | −0.1 | 0.1 |
+| −2 | −0.01 | 0.01 |
+| −10 | 0 | 0 |
+| −10 | −1 | 1 |
+| −10 | −0.1 | 0.1 |
+| −10 | −0.01 | 0.01 |
+
+The launcher accepts **signed** `--step-penalties` and converts them to positive
+costs because the environment subtracts `step_cost`. The cost applies to every
+action, including pickups: with cost 1, a correct pickup gives +9 and a wrong
+pickup gives −3 or −11. Wrong pickups still allow the episode to continue.
+The environment's default rewards are not changed by this script.
+
+Outputs go under `src/minigrid/custom_scripts/runs/reward_sweep/` by default, or
+`$RL_STORAGE/reward_sweep/` if set. Override with `--output-dir`. Each agent/reward/
+seed combination has its own directory, for example
+`frozen-flan_wrong10_cost0p01_seed0/`, containing the trainer's usual logs and
+checkpoints. Training output also remains visible in the terminal.
+
+The sweep stops if a job fails. Rerun the same command to resume from saved
+checkpoints; runs already at the target budget perform no additional PPO updates.
+Use a new output directory for a fresh sweep, and keep the other training settings
+unchanged when resuming. To extend the existing runs, pass `--frames 5000000`.
+
+For a short execution check in a **separate** directory:
+
+```bash
+uv run --extra llm python -m minigrid.custom_scripts.run_reward_sweep \
+  --output-dir misc/reward_sweep_smoke --frames 32 --procs 2 \
+  --frames-per-proc 16 --batch-size 16 --epochs 1 \
+  --wrong-rewards -2 --step-penalties -0.01 --device cpu
+```
+
+This checks both agents on one reward configuration. Select one agent using
+`--agents gru` or `--agents frozen-flan`. Other PPO settings, FLAN model selection,
+logging, and checkpoint intervals retain the shared trainer's defaults.
+Compare agents within each reward configuration; raw returns across different
+reward scales are not directly comparable measures of task performance.
 
 ## Later evaluation
 
