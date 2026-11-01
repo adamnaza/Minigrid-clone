@@ -28,15 +28,27 @@ dependencies = [
     "numpy>=1.18.0",
     "gymnasium>=0.28.1",
     "pygame-ce>=2.4.0",
-    "torch",
+    "torch==2.11.0",
     "torch-ac>=1.4.0",
     "tensorboardX>=1.6",
 ]
 dynamic = ["version"]
 
 [project.optional-dependencies]
+llm = ["transformers>=4.45,<5", "sentencepiece>=0.2"]
 testing = ["pytest>=7.0.1", "pytest-mock>=3.10.0", "matplotlib>=3.0"]
 wfc = ["networkx", "imageio>=2.31.1"]
+
+# Use the CUDA 12.8 build on Linux/Windows; other platforms use PyPI.
+[tool.uv.sources]
+torch = [
+    { index = "pytorch-cu128", marker = "sys_platform == 'linux' or sys_platform == 'win32'" },
+]
+
+[[tool.uv.index]]
+name = "pytorch-cu128"
+url = "https://download.pytorch.org/whl/cu128"
+explicit = true
 
 [project.urls]
 Homepage = "https://farama.org"

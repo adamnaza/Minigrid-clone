@@ -72,6 +72,10 @@ parser.add_argument("--recurrence", type=int, default=1,
                     help="number of time-steps gradient is backpropagated (default: 1). If > 1, a LSTM is added to the model to have memory.")
 parser.add_argument("--text", action="store_true", default=True,
                     help="add a GRU to the model to handle text input")
+parser.add_argument("--agent", choices=("gru", "frozen-flan"), default="gru")
+parser.add_argument("--llm-model", default="google/flan-t5-base")
+parser.add_argument("--llm-revision", default="main",
+                    help="Hugging Face revision shared by the encoder and tokenizer")
 
 parser.add_argument("--device", choices=("cpu", "cuda"), default="cpu")
 parser.add_argument("--threads", type=int, default=4)
@@ -93,7 +97,7 @@ if __name__ == "__main__":
     # Set run dir
 
     date = datetime.datetime.now().strftime("%y-%m-%d-%H-%M-%S")
-    default_model_name = f"{args.env}_{args.algo}_seed{args.seed}_{date}"
+    default_model_name = f"{args.env}_{args.agent}_{args.algo}_seed{args.seed}_{date}"
 
     model_name = args.model or default_model_name
     model_dir = utils.get_model_dir(model_name)
@@ -142,19 +146,31 @@ if __name__ == "__main__":
 
     # Load observations preprocessor
     # preprocessor converts observations into numerical tensors for the model
-    obs_space, preprocess_obss = utils.get_obss_preprocessor(envs[0].observation_space)
-    if "vocab" in status:
-        preprocess_obss.vocab.load_vocab(status["vocab"])
+    # determine if training frozen llm or gru agent
+    if args.agent == "frozen-flan":
+        from minigrid.custom_scripts.frozen_llm_model import FrozenLLMACModel
+        from minigrid.custom_scripts.frozen_llm_preprocessor import get_obss_preprocessor
+
+        obs_space, preprocess_obss = get_obss_preprocessor(
+            envs[0].observation_space, args.llm_model, args.llm_revision)
     else:
-        # All words come from allowed training missions; no held-out task is exposed.
-        for task in TRAIN_TASKS:
-            for word in task.mission.split():
-                preprocess_obss.vocab[word]
+        obs_space, preprocess_obss = utils.get_obss_preprocessor(envs[0].observation_space)
+        if "vocab" in status:
+            preprocess_obss.vocab.load_vocab(status["vocab"])
+        else:
+            # All words come from allowed training missions; no held-out task is exposed.
+            for task in TRAIN_TASKS:
+                for word in task.mission.split():
+                    preprocess_obss.vocab[word]
     txt_logger.info("Observations preprocessor loaded")
 
     # Load model
-
-    acmodel = ACModel(obs_space, envs[0].action_space, args.mem, args.text)
+    # load frozen llm or gru model
+    if args.agent == "frozen-flan":
+        acmodel = FrozenLLMACModel(obs_space, envs[0].action_space, args.mem,
+                                  args.llm_model, args.llm_revision)
+    else:
+        acmodel = ACModel(obs_space, envs[0].action_space, args.mem, args.text)
     if "model_state" in status:
         acmodel.load_state_dict(status["model_state"])
     acmodel.to(device)
@@ -190,8 +206,10 @@ if __name__ == "__main__":
     def save_status(filename="status.pt"):
         status = {"num_frames": num_frames, "update": update,
                   "model_state": acmodel.state_dict(), "optimizer_state": algo.optimizer.state_dict(),
-                  "vocab": preprocess_obss.vocab.vocab, "training_config": signature,
+                  "training_config": signature,
                   "environment_config": CONFIG}
+        if args.agent == "gru":
+            status["vocab"] = preprocess_obss.vocab.vocab
         path = Path(model_dir) / filename
         temporary = path.with_suffix(".tmp")
         torch.save(status, temporary)

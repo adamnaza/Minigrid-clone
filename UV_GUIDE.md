@@ -41,6 +41,9 @@ No separate `pip install`, `setup.py` invocation, or environment activation is
 needed. In your IDE, select `.venv/bin/python` as the interpreter.
 
 `pyproject.toml` declares dependencies; `uv.lock` records resolved versions.
+PyTorch is pinned to 2.11.0, using the CUDA 12.8 index on Linux/Windows and
+PyPI on other platforms. This CUDA build supports the local RTX 4090 driver
+576.88; no separate CUDA toolkit installation is needed for these training scripts.
 Commit both files when dependency changes update the lockfile. For a checkout
 whose lockfile is already current, add `--locked` to `uv sync` to require it to
 remain unchanged. See [uv synchronization](https://docs.astral.sh/uv/concepts/projects/sync/).
@@ -126,24 +129,22 @@ architecture: custom training uses text by default, so evaluation needs `--text`
 if training used `--recurrence` greater than 1, also pass `--memory`.
 
 This measures performance on the training distribution, not held-out negation
-generalization. `BabyAI-PickupNegation-Test-v0` requires an explicit task at every
-reset (`env.reset(options={"task": task_id})`). The generic evaluator does not
-supply those options, so it cannot directly evaluate that environment. A dedicated
-task-aware evaluation loop is needed for held-out results.
+generalization. Only `BabyAI-PickupNegation-v0` is currently registered; explicit
+held-out task selection and its evaluation loop remain deferred. The wrapper above
+is for the GRU/CNN agent, not the frozen FLAN model.
 
-To check the held-out environment itself without evaluating a model:
+For frozen FLAN training, install and retain the LLM extra:
 
 ```bash
-uv run python - <<'PY'
-import gymnasium as gym
-import minigrid.custom_scripts
-
-env = gym.make("BabyAI-PickupNegation-Test-v0")
-obs, info = env.reset(seed=1, options={"task": "negative:purple:ball"})
-print(obs["mission"])
-env.close()
-PY
+uv sync --extra llm
+uv run --extra llm python -m minigrid.custom_scripts.train \
+  --agent frozen-flan --model flan-smoke --frames 128 --procs 2 \
+  --frames-per-proc 16 --batch-size 16 --epochs 1 --device cpu
 ```
+
+The first run downloads FLAN-T5-base; it stays frozen while the projection, CNN,
+actor, and critic train. See the [custom scripts README](src/minigrid/custom_scripts/README.md)
+for full training, resuming, and the deferred FLAN evaluation entry point.
 
 ## 6. Train, evaluate, and watch a standard MiniGrid agent
 
@@ -176,8 +177,11 @@ trained with `--text` or recurrent memory, pass the matching `--text` and/or
 - **Model shape mismatch:** match text/memory flags to training and use the same
   environment observation/action spaces.
 - **Custom environment not registered:** use the registration wrapper in step 5.
-- **Test environment requires a task:** use explicit reset options; the generic
-  evaluator does not support this custom test split.
+- **Held-out evaluation:** there is no registered test environment yet; the current
+  custom environment samples training instructions only.
+- **FLAN dependencies:** retain `--extra llm` on uv commands used for this agent.
+- **CUDA unavailable:** the installed PyTorch CUDA build must be supported by the
+  NVIDIA driver. CPU smoke tests can run even when CUDA is unavailable.
 - **Generated files:** `runs/` contains experiment output; keep large checkpoints
   and logs out of commits. `figures/` contains existing documentation assets,
   and `tests/` contains automated tests. Both remain at the repository root.

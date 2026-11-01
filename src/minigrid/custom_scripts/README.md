@@ -1,9 +1,9 @@
 # Custom BabyAI training scripts
 
-This folder currently implements training for a **GRU/CNN agent** on positive and
+This folder trains **GRU/CNN and frozen FLAN-T5/CNN agents** on positive and
 color-negation pickup instructions, using `BabyAI-PickupDist-v0` as the base.
-Evaluation is deferred. **FLAN-T5-base is selected for the frozen-LLM agent, but
-that agent is not implemented yet.**
+Both agents share the environment, rewards, PPO loop, and downstream architecture.
+Held-out evaluation and the full-LLM agent remain deferred.
 
 ## Files and responsibilities
 
@@ -12,9 +12,11 @@ that agent is not implemented yet.**
 | [pickup_tasks.py](pickup_tasks.py) | Defines instruction templates, colors, object types, correct-object matching, the training instruction list, and default environment/reward settings. |
 | [pickup_negation.py](pickup_negation.py) | Extends BabyAI's `PickupDist`. Selects instructions, places objects, verifies pickups, and calculates rewards. |
 | [__init__.py](__init__.py) | Registers the training environment as `BabyAI-PickupNegation-v0` when the package is imported. |
-| [train.py](train.py) | Adapts the starter training script to create our environments, run PPO, log statistics, and save/resume checkpoints. |
+| [frozen_llm_model.py](frozen_llm_model.py) | Reuses the starter actor-critic, replacing GRU text processing with frozen FLAN, masked mean pooling, and a learned linear projection. |
+| [frozen_llm_preprocessor.py](frozen_llm_preprocessor.py) | Tokenizes missions with FLAN’s tokenizer, supplies attention masks, and reuses image preprocessing. |
+| [train.py](train.py) | Selects the agent and adapts the starter training script to create our environments, run PPO, log statistics, and save/resume checkpoints. |
 
-The model comes from [rl_starter_files/model.py](../../rl_starter_files/model.py).
+The GRU model comes from [rl_starter_files/model.py](../../rl_starter_files/model.py).
 The trainer also reuses the starter's observation preprocessing and logging
 utilities, and uses `torch_ac` for experience collection and PPO updates.
 
@@ -128,10 +130,14 @@ uv run python -m minigrid.custom_scripts.train --model gru_step_cost --seed 1 --
 ```
 
 Use a new model name for a fresh run. Reusing a directory containing `status.pt`
-loads its model, optimizer, vocabulary, and cumulative training counters.
+loads its model, optimizer, and cumulative training counters (plus vocabulary for
+the GRU). Resume with the same agent and model/tokenizer settings.
 
 | Setting | Default | Meaning |
 |---|---|---|
+| `--agent` | `gru` | Choose `gru` or `frozen-flan` |
+| `--llm-model` | `google/flan-t5-base` | Pretrained encoder/tokenizer for the frozen agent |
+| `--llm-revision` | `main` | Shared Hugging Face revision; use a commit ID to pin an experiment |
 | `--algo` | `ppo` | Learning algorithm |
 | `--frames` | 3,000,000 | Total environment steps, including resumed steps |
 | `--procs` | 16 | Environments collecting experience for one shared model |
@@ -157,7 +163,7 @@ folders are ignored by Git.
 - `log.csv`: training return/episode-length statistics, speed, and optimization metrics.
 - TensorBoard event files: scalar training metrics.
 - `config.json`: recorded training and environment settings.
-- `status.pt`: latest saved model, optimizer, vocabulary, settings, and counters.
+- `status.pt`: latest saved model, optimizer, settings, and counters; GRU checkpoints also include their word vocabulary. FLAN checkpoints include frozen encoder weights, so they are much larger. The tokenizer is loaded from the configured model/revision.
 - `checkpoint_1000000.pt`, `checkpoint_2000000.pt`, `checkpoint_3000000.pt`:
   default milestone copies, saved after the rollout that crosses each target.
 
@@ -178,7 +184,7 @@ evaluation results or a complete per-episode dataset.
 
 ## Verification performed
 
-Local CPU checks passed for the current GRU/CNN pipeline:
+Earlier local CPU checks passed for the GRU/CNN pipeline:
 
 - 1,000 generated episodes covered all 27 training instructions and excluded held-out negations.
 - Scripted pickups checked recovery, reward values, the optional action cost, and 500-step timeouts.
@@ -186,20 +192,77 @@ Local CPU checks passed for the current GRU/CNN pipeline:
 - CNN, GRU, actor, and critic parameters changed and remained finite.
 - Checkpoint restoration, CSV logging, and TensorBoard output worked.
 
+After the uv refactor and frozen-agent implementation, CPU checks also passed:
+
+- The environment checks above were rerun against the new package paths.
+- GRU training ran for 2,048 steps and resumed to 3,072 steps.
+- Real FLAN-T5-base training ran for 128 steps and resumed to 1,024 steps.
+- Saved FLAN encoder weights exactly matched the original pretrained encoder;
+  the projection, CNN, actor, and critic changed, and optimizer counters continued.
+- Two offline tests passed for pooling, padding, frozen weights, gradients, and PPO.
+- Existing wrapper tests: 2,051 passed and 192 skipped.
+
+These checks used PyTorch 2.15.0 with CUDA 13.2, whose CUDA build required a newer
+driver than the local driver exposes, so they ran on CPU. The project now pins
+PyTorch 2.11.0 with CUDA 12.8 on Linux/Windows for compatibility with that driver.
+Two incomplete CUDA library installations were repaired before verification.
+The new report is `misc/frozen_llm_verification/report.json`.
+
 The verification script, logs, checkpoints, and report are local artifacts under
 ignored `misc/` and are not required for training. These checks establish that the
 pipeline runs and updates parameters, not convergence or generalization.
 
-## Planned frozen-LLM agent and evaluation
+## Frozen FLAN-T5/CNN training
 
-**Confirmed model choice:** FLAN-T5-base (`google/flan-t5-base`) for the frozen
-instruction encoder. The current trainer still builds the GRU/CNN agent; there is
-no frozen-LLM implementation or command yet.
+Install the optional dependencies and keep the extra on subsequent uv commands:
 
-The design under discussion is to use the frozen encoder, pool token vectors while
-excluding padding, and train a 768-to-128 projection before concatenating with CNN
-features. Pooling, projection, caching, precision, and implementation details remain
-to be finalized.
+```bash
+uv sync --extra llm
+
+# Short CPU check, using a new model name.
+uv run --extra llm python -m minigrid.custom_scripts.train \
+  --agent frozen-flan --model flan_smoke --frames 128 \
+  --procs 2 --frames-per-proc 16 --batch-size 16 --epochs 1 --device cpu
+
+# Full pilot, once a short run works on the chosen device.
+uv run --extra llm python -m minigrid.custom_scripts.train \
+  --agent frozen-flan --model flan_pilot --frames 3000000 --device cuda
+```
+
+The first FLAN run downloads the public model/tokenizer from Hugging Face. Later
+runs reuse downloaded files; **instruction embeddings are not cached**. CPU works
+without CUDA. Use `--device cuda` only with a compatible PyTorch build and driver.
+A small smoke run verifies execution, not learning quality or the full-run budget.
+
+The model uses FLAN-T5-base's **encoder only**, in float32. It averages final token
+vectors over non-padding positions, then applies one trainable `Linear(768, 128)`
+without extra layers or activations. Concatenating with the 64 CNN features keeps
+the actor/critic input at 192 features. The CNN, actor, critic, and forward method
+are inherited from the starter `ACModel`; only text encoding is replaced.
+
+The encoder has gradients disabled and remains in evaluation mode even when PPO
+calls `train()`. Its output is computed under `no_grad()`, but the projection is
+outside that context and learns normally. Starter initialization runs before FLAN
+is attached, preserving pretrained weights. The model's `parameters()` yields only
+trainable parameters because torch-ac's gradient-norm logging assumes gradients
+exist; `named_parameters()` and `state_dict()` still include the encoder.
+
+The preprocessor returns image tensors plus a nested `DictList` containing token
+IDs and attention masks. PPO can slice these together into minibatches. FLAN uses
+its pretrained tokenizer, not the GRU's learned word-ID vocabulary.
+
+Use the same `--agent`, `--llm-model`, and `--llm-revision` when resuming a FLAN run.
+Use a distinct model directory for each agent. The starter evaluator/visualizer
+constructs the GRU architecture and **cannot load FLAN checkpoints**; a matching
+evaluation entry point is deferred.
+
+Offline model tests use a tiny local T5 and require no model download:
+
+```bash
+uv run --extra llm --extra testing pytest tests/test_frozen_llm.py -q
+```
+
+## Later evaluation
 
 Evaluation will focus on return over repeated unseen-instruction episodes. Its scene
 count, instruction-selection interface, and scripts are deferred. `or` and counting
