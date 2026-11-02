@@ -26,6 +26,8 @@ def main(argv=None):
     parser.add_argument("--frames-per-proc", type=int, default=128)
     parser.add_argument("--batch-size", type=int, default=256)
     parser.add_argument("--epochs", type=int, default=4)
+    parser.add_argument("--recurrence", type=int, default=1,
+                        help="Backpropagation sequence length; values > 1 enable LSTM memory")
     parser.add_argument("--threads", type=int, default=4)
     parser.add_argument("--dry-run", action="store_true",
                         help="Print commands without starting training or creating output files")
@@ -45,12 +47,14 @@ def main(argv=None):
                 step_cost = abs(step_penalty)
                 cost_label = f"{step_cost:g}".replace(".", "p")
                 model_name = f"{agent}_wrong{abs(wrong_reward):g}_cost{cost_label}_seed{args.seed}"
+                if args.recurrence > 1:
+                    model_name += f"_recurrence{args.recurrence}"
                 command = [sys.executable, "-m", "minigrid.custom_scripts.train",
                            "--agent", agent, "--model", model_name,
                            "--correct-reward", "10.0", "--wrong-reward", str(wrong_reward),
                            "--step-cost", str(step_cost)]
                 for name in ("frames", "seed", "device", "procs", "frames_per_proc",
-                             "batch_size", "epochs", "threads"):
+                             "batch_size", "epochs", "threads", "recurrence"):
                     command.extend(["--" + name.replace("_", "-"), str(getattr(args, name))])
                 run += 1
                 print(f"\n[{run}/{total}] {model_name}\n{shlex.join(command)}", flush=True)

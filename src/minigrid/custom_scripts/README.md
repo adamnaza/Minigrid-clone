@@ -313,6 +313,22 @@ checkpoints; runs already at the target budget perform no additional PPO updates
 Use a new output directory for a fresh sweep, and keep the other training settings
 unchanged when resuming. To extend the existing runs, pass `--frames 5000000`.
 
+To run all 16 configurations with LSTM memory:
+
+```bash
+uv run --extra llm python -m minigrid.custom_scripts.run_reward_sweep \
+  --recurrence 8 --output-dir src/minigrid/custom_scripts/runs/reward_sweep_memory
+```
+
+This keeps seed 0 and three million steps per run. Recurrence defaults to 1
+(no memory); values above 1 enable memory for both agents. Memory run names
+include `_recurrence8` (or the selected value), keeping them separate from
+existing no-memory checkpoints even if the same output directory is used.
+The default rollout length of 128 and batch size of 256 support recurrence 8.
+Add `--dry-run` to preview commands. Evaluate these runs by passing
+`--runs-dir src/minigrid/custom_scripts/runs/reward_sweep_memory` and
+`--output-dir src/minigrid/custom_scripts/results/evaluation_memory` to the evaluator.
+
 For a short execution check in a **separate** directory:
 
 ```bash
