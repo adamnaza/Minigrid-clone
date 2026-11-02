@@ -2,15 +2,16 @@
 
 import argparse
 import os
-from pathlib import Path
 import shlex
 import subprocess
 import sys
+from pathlib import Path
+from minigrid.custom_scripts import get_storage_dir
 
 
 def main(argv=None):
     parser = argparse.ArgumentParser(description=__doc__)
-    storage = Path(os.environ.get("RL_STORAGE", Path(__file__).parent / "runs"))
+    storage = get_storage_dir()
     parser.add_argument("--output-dir", type=Path, default=storage / "reward_sweep")
     parser.add_argument("--agents", nargs="+", choices=("gru", "frozen-flan"),
                         default=["gru", "frozen-flan"])
