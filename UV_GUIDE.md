@@ -80,15 +80,17 @@ agent, below, measures model performance.
 
 ## 4. Train the custom pickup-negation agent
 
-Choose a shared output directory so training and evaluation find the same models:
+Custom training, reward sweeps, and evaluation default to `runs/` at the project
+root, regardless of the working directory. To override this location:
 
 ```bash
 export RL_STORAGE="$PWD/runs"
 ```
 
 Set this in each new terminal used for training/evaluation. The scripts create
-the model directories. Without this override, custom training writes under
-`src/minigrid/custom_scripts/runs/`, while starter scripts use `./storage/`.
+the model directories. Without this override, custom scripts use the project-root `runs/` directory
+(or `./runs/` for an installed package without a source checkout). Starter scripts
+use `./storage/`.
 
 First try a short run to exercise the training pipeline:
 
@@ -151,7 +153,7 @@ uv run --extra llm python -m minigrid.custom_scripts.evaluate
 ```
 
 This reads final checkpoints from `$RL_STORAGE/reward_sweep/` when `RL_STORAGE` is
-set, otherwise from `src/minigrid/custom_scripts/runs/reward_sweep/`. Use `--runs-dir`
+set, otherwise from `runs/reward_sweep/`. Use `--runs-dir`
 to specify another directory. Default results go under
 `src/minigrid/custom_scripts/results/evaluation/`.
 
