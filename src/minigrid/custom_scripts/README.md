@@ -371,7 +371,7 @@ Each episode produces both scores from the **same trajectory**:
   reward settings, including its per-action cost.
 - **Common return:** `10 × completion − 2 × wrong_pickups`, with no action cost.
 
-Outputs default to `src/minigrid/custom_scripts/results/evaluation/`; override
+Outputs default to `<project-root>/results/evaluation/`; override
 with `--output-dir`. There is one subdirectory per training run:
 
 ```text

@@ -6,12 +6,14 @@ from statistics import mean, pstdev
 
 from minigrid.custom_scripts.pickup_negation import PickupNegation
 from minigrid.custom_scripts.pickup_tasks import TASKS, REWARD_DEFAULTS
-from minigrid.custom_scripts import get_storage_dir
+from minigrid.custom_scripts import get_storage_dir, PROJECT_ROOT
 from rl_starter_files import utils
 from rl_starter_files.model import ACModel
 
 # evaluate on the unseen negative instructions
 TEST_TASKS = tuple(t for t in TASKS if t.category == "held_out_negative")
+
+RESULTS_DIR_DEFAULT = PROJECT_ROOT / "results" / "evaluation"
 
 
 def load_agent(checkpoint, device):
@@ -114,7 +116,7 @@ def main(argv=None):
     storage = get_storage_dir()
     parser.add_argument("--runs-dir", type=Path, default=storage / "reward_sweep")
     parser.add_argument("--checkpoint", type=Path, help="Evaluate one checkpoint instead of the sweep")
-    parser.add_argument("--output-dir", type=Path, default=Path(__file__).parent / "results" / "evaluation")
+    parser.add_argument("--output-dir", type=Path, default=RESULTS_DIR_DEFAULT)
     parser.add_argument("--tasks", nargs="+", choices=[t.id for t in TEST_TASKS],
                         default=[t.id for t in TEST_TASKS])
     parser.add_argument("--scene-seeds", nargs="+", type=int, choices=range(20), default=list(range(20)))
