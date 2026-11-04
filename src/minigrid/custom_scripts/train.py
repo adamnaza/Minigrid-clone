@@ -8,8 +8,9 @@ import torch
 
 from minigrid.custom_scripts import TRAIN_ENV
 from minigrid.custom_scripts.pickup_tasks import CONFIG, TRAIN_TASKS, REWARD_DEFAULTS
+from minigrid.custom_scripts import get_storage_dir
 
-os.environ.setdefault("RL_STORAGE", str(Path(__file__).resolve().parent / "runs"))
+os.environ.setdefault("RL_STORAGE", str(get_storage_dir()))
 
 import argparse
 import time

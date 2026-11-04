@@ -158,7 +158,9 @@ Text processing is enabled by default in this custom trainer.
 
 ## Logs and checkpoints
 
-Outputs default to `src/minigrid/custom_scripts/runs/<model>/`. An existing `RL_STORAGE`
+Outputs default to `runs/<model>/` at the project root (located by searching
+source-file ancestors for `pyproject.toml`; installed packages without that marker
+use `./runs/`). An existing `RL_STORAGE`
 environment variable overrides this location. The local `runs/` and `results/`
 folders are ignored by Git.
 
@@ -302,7 +304,7 @@ action, including pickups: with cost 1, a correct pickup gives +9 and a wrong
 pickup gives −3 or −11. Wrong pickups still allow the episode to continue.
 The environment's default rewards are not changed by this script.
 
-Outputs go under `src/minigrid/custom_scripts/runs/reward_sweep/` by default, or
+Outputs go under `runs/reward_sweep/` by default, or
 `$RL_STORAGE/reward_sweep/` if set. Override with `--output-dir`. Each agent/reward/
 seed combination has its own directory, for example
 `frozen-flan_wrong10_cost0p01_seed0/`, containing the trainer's usual logs and
@@ -352,7 +354,7 @@ Evaluate every `*/status.pt` under the reward-sweep directory:
 uv run --extra llm python -m minigrid.custom_scripts.evaluate
 ```
 
-The default input directory matches the sweep: `src/minigrid/custom_scripts/runs/reward_sweep/`,
+The default input directory matches the sweep: `runs/reward_sweep/`,
 or `$RL_STORAGE/reward_sweep/` if set. Use `--runs-dir` for another sweep directory.
 The evaluator reads model type, original rewards, and FLAN model/revision from each
 checkpoint. It loads GRU vocabularies rather than building new ones. Model weights
@@ -374,7 +376,7 @@ To evaluate one checkpoint, or perform a small execution check:
 
 ```bash
 uv run --extra llm python -m minigrid.custom_scripts.evaluate \
-  --checkpoint src/minigrid/custom_scripts/runs/reward_sweep/gru_wrong2_cost1_seed0/status.pt \
+  --checkpoint runs/reward_sweep/gru_wrong2_cost1_seed0/status.pt \
   --tasks negative:purple:ball --scene-seeds 0 1 \
   --output-dir misc/evaluation_smoke --device cpu
 ```
@@ -385,7 +387,7 @@ Each episode produces both scores from the **same trajectory**:
   reward settings, including its per-action cost.
 - **Common return:** `10 × completion − 2 × wrong_pickups`, with no action cost.
 
-Outputs default to `src/minigrid/custom_scripts/results/evaluation/`; override
+Outputs default to `<project-root>/results/evaluation/`; override
 with `--output-dir`. There is one subdirectory per training run:
 
 ```text
@@ -412,6 +414,20 @@ Rerunning evaluation replaces that run's CSVs; it does not resume partial episod
 lists. Use separate output directories for earlier checkpoints or different test
 settings. The training checkpoints are read only. Summary files appear only after
 that checkpoint's evaluation finishes successfully.
+
+Combine the overall summaries into one CSV (one row per run, with all metrics
+and a `run` column identifying the source directory):
+
+```bash
+uv run python -m minigrid.custom_scripts.collect_evaluation
+```
+
+This reads `results/evaluation/*/summary.csv` and writes
+`results/evaluation/combined_summary.csv`. It collects every available run
+(16 for a complete sweep) and prints the run count. Use `--results-dir PATH`
+for results elsewhere, `--output PATH` to choose the destination, or
+`--include-instructions` to retain per-instruction rows alongside overall rows.
+The script uses only the Python standard library.
 
 Focused offline checks:
 
