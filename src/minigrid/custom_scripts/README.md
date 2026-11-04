@@ -399,6 +399,20 @@ lists. Use separate output directories for earlier checkpoints or different test
 settings. The training checkpoints are read only. Summary files appear only after
 that checkpoint's evaluation finishes successfully.
 
+Combine the overall summaries into one CSV (one row per run, with all metrics
+and a `run` column identifying the source directory):
+
+```bash
+uv run python -m minigrid.custom_scripts.collect_evaluation
+```
+
+This reads `results/evaluation/*/summary.csv` and writes
+`results/evaluation/combined_summary.csv`. It collects every available run
+(16 for a complete sweep) and prints the run count. Use `--results-dir PATH`
+for results elsewhere, `--output PATH` to choose the destination, or
+`--include-instructions` to retain per-instruction rows alongside overall rows.
+The script uses only the Python standard library.
+
 Focused offline checks:
 
 ```bash
