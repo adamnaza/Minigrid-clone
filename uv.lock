@@ -1,5 +1,5 @@
 version = 1
-revision = 5
+revision = 3
 requires-python = ">=3.11"
 resolution-markers = [
     "(python_full_version >= '3.12' and sys_platform == 'linux') or (python_full_version >= '3.12' and sys_platform == 'win32')",
@@ -984,10 +984,6 @@ dependencies = [
 ]
 
 [package.optional-dependencies]
-llm = [
-    { name = "sentencepiece" },
-    { name = "transformers" },
-]
 testing = [
     { name = "matplotlib" },
     { name = "pytest" },
@@ -997,6 +993,12 @@ wfc = [
     { name = "imageio" },
     { name = "networkx", version = "3.6.1", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version < '3.12'" },
     { name = "networkx", version = "3.7", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version >= '3.12'" },
+]
+
+[package.dev-dependencies]
+llm = [
+    { name = "sentencepiece" },
+    { name = "transformers" },
 ]
 
 [package.metadata]
@@ -1009,14 +1011,18 @@ requires-dist = [
     { name = "pygame-ce", specifier = ">=2.4.0" },
     { name = "pytest", marker = "extra == 'testing'", specifier = ">=7.0.1" },
     { name = "pytest-mock", marker = "extra == 'testing'", specifier = ">=3.10.0" },
-    { name = "sentencepiece", marker = "extra == 'llm'", specifier = ">=0.2" },
     { name = "tensorboardx", specifier = ">=1.6" },
     { name = "torch", marker = "sys_platform != 'linux' and sys_platform != 'win32'", specifier = "==2.11.0" },
     { name = "torch", marker = "sys_platform == 'linux' or sys_platform == 'win32'", specifier = "==2.11.0", index = "https://download.pytorch.org/whl/cu128" },
     { name = "torch-ac", specifier = ">=1.4.0" },
-    { name = "transformers", marker = "extra == 'llm'", specifier = ">=4.45,<5" },
 ]
-provides-extras = ["llm", "testing", "wfc"]
+provides-extras = ["testing", "wfc"]
+
+[package.metadata.requires-dev]
+llm = [
+    { name = "sentencepiece", specifier = ">=0.2" },
+    { name = "transformers", specifier = ">=4.45,<5" },
+]
 
 [[package]]
 name = "mpmath"
