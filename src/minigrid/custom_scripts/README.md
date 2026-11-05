@@ -418,11 +418,61 @@ The existing 500-action limit, five-action set, partial view, and recovery after
 wrong pickups are retained. Final checkpoints currently contain 3,000,320 steps.
 
 Scene generation is identical across agents for the same instruction/scene seed.
-Action-sampling seeds are `20 × instruction_index + scene_seed`, giving 0–179.
+For unseen instructions, action-sampling seeds are `20 × instruction_index + scene_seed`, giving 0–179.
 Instruction order is purple, yellow, grey, with ball, key, box within each color.
 Subset checks keep the same mapping. Different policies can still choose different
 actions; repeatability assumes the same software and device. Different scene seeds
 do not guarantee distinct layouts.
+
+### Seen versus unseen instructions
+
+Select evaluation instructions with `--instruction-set`:
+
+| Value | Instructions | Episodes with seeds 0–19 | Default output |
+|---|---|---:|---|
+| `unseen` (default) | Nine held-out negations: purple/yellow/grey | 180 | `results/evaluation/` |
+| `seen-negative` | Nine training negations: red/green/blue | 180 | `results/evaluation_seen_negative/` |
+| `seen-positive` | All 18 positive training instructions | 360 | `results/evaluation_seen_positive/` |
+| `seen` | All 27 training instructions | 540 | `results/evaluation_seen/` |
+
+Use `seen-negative` for the closest comparison to unseen negation performance.
+Seen instructions are evaluated on seeded generated scenes, not replayed training
+trajectories. Scene identity across training and evaluation is not excluded by
+these seeds. `seen` averages positives and negations in a 2:1 ratio, so its overall
+score is not a direct negation-only comparison. Per-instruction summaries remain
+available. No policy weights are updated during evaluation.
+
+The action-seed order is fixed: existing unseen tasks first (0–179), then seen
+negations (180–359), then positives (360–719). Subsetting does not change a task's
+seed. CSVs include instruction categories to distinguish evaluation groups.
+As before, an explicit `--output-dir` overrides the default; keep seen and unseen
+outputs separate to avoid overwriting results for the same checkpoint.
+
+For the four no-memory runs with wrong reward −2 and step cost 1, run from the
+repository root on the machine holding the checkpoints. Set these paths to their
+actual locations (older original runs may be under `src/minigrid/custom_scripts/runs/reward_sweep`):
+
+```bash
+original_runs=runs/reward_sweep
+first_pickup_runs=runs/first_pickup_reward_sweep
+for agent in gru frozen-flan; do
+  uv run python -m minigrid.custom_scripts.evaluate \
+    --checkpoint "$original_runs/${agent}_wrong2_cost1_seed0/status.pt" \
+    --instruction-set seen-negative \
+    --output-dir results/evaluation_seen_negative --device cuda || break
+  uv run python -m minigrid.custom_scripts.evaluate \
+    --checkpoint "$first_pickup_runs/${agent}_wrong2_cost1_seed2_first_pickup/status.pt" \
+    --instruction-set seen-negative \
+    --output-dir results/evaluation_seen_negative --device cuda || break
+done
+```
+
+This is 720 episodes total. To include positives too, use `--instruction-set seen`
+and `--output-dir results/evaluation_seen` (2,160 episodes across four agents).
+Compare each checkpoint's seen versus unseen returns, wrong pickups, lengths, and
+first-pickup correctness (`success == 1 and wrong_pickups == 0`). The original and
+first-pickup experiments used different training seeds, so their differences do
+not isolate the reward rule alone.
 
 To evaluate one checkpoint, or perform a small execution check:
 

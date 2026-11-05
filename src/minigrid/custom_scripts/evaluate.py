@@ -10,8 +10,14 @@ from minigrid.custom_scripts import get_storage_dir, PROJECT_ROOT
 from rl_starter_files import utils
 from rl_starter_files.model import ACModel
 
-# evaluate on the unseen negative instructions
+# Keep unseen instructions first so their existing action seeds remain unchanged.
 TEST_TASKS = tuple(t for t in TASKS if t.category == "held_out_negative")
+SEEN_NEGATIVE_TASKS = tuple(t for t in TASKS if t.category == "familiar_negative")
+SEEN_POSITIVE_TASKS = tuple(t for t in TASKS if t.kind == "positive")
+EVALUATION_TASKS = TEST_TASKS + SEEN_NEGATIVE_TASKS + SEEN_POSITIVE_TASKS
+INSTRUCTION_SETS = {"unseen": TEST_TASKS, "seen-negative": SEEN_NEGATIVE_TASKS,
+                    "seen-positive": SEEN_POSITIVE_TASKS,
+                    "seen": SEEN_NEGATIVE_TASKS + SEEN_POSITIVE_TASKS}
 
 RESULTS_DIR_DEFAULT = PROJECT_ROOT / "results" / "evaluation"
 
@@ -45,7 +51,7 @@ def load_agent(checkpoint, device):
 @torch.inference_mode()
 def run_episode(env, model, preprocess, task, scene_seed, device):
     # Canonical task order keeps this mapping stable even when testing a subset.
-    action_seed = TEST_TASKS.index(task) * 20 + scene_seed
+    action_seed = EVALUATION_TASKS.index(task) * 20 + scene_seed
     obs, _ = env.reset(seed=scene_seed, options={"task": task.id})
     torch.manual_seed(action_seed)
     memory = torch.zeros(1, model.memory_size, device=device)
@@ -59,6 +65,7 @@ def run_episode(env, model, preprocess, task, scene_seed, device):
         length += 1
     success = int(info["success"])
     return {"instruction_id": task.id, "instruction": task.mission,
+            "instruction_category": task.category,
             "scene_seed": scene_seed, "action_seed": action_seed,
             "original_return": total, "common_return": 10 * success - 2 * wrong_pickups,
             "episode_length": length, "wrong_pickups": wrong_pickups,
@@ -85,6 +92,7 @@ def summarize(rows):
 
 def evaluate(checkpoint, output_dir, tasks, seeds, device):
     env, model, preprocess, metadata = load_agent(checkpoint, device)
+    metadata["instruction_categories"] = ",".join(sorted({task.category for task in tasks}))
     try:
         output_dir.mkdir(parents=True, exist_ok=True)
         (output_dir / "summary.csv").unlink(missing_ok=True)
@@ -117,21 +125,27 @@ def main(argv=None):
     storage = get_storage_dir()
     parser.add_argument("--runs-dir", type=Path, default=storage / "reward_sweep")
     parser.add_argument("--checkpoint", type=Path, help="Evaluate one checkpoint instead of the sweep")
-    parser.add_argument("--output-dir", type=Path, default=RESULTS_DIR_DEFAULT)
-    parser.add_argument("--tasks", nargs="+", choices=[t.id for t in TEST_TASKS],
-                        default=[t.id for t in TEST_TASKS])
+    parser.add_argument("--output-dir", type=Path)
+    parser.add_argument("--instruction-set", choices=tuple(INSTRUCTION_SETS), default="unseen")
+    parser.add_argument("--tasks", nargs="+", choices=[t.id for t in EVALUATION_TASKS],
+                        help="Optional subset of the selected instruction set")
     parser.add_argument("--scene-seeds", nargs="+", type=int, choices=range(20), default=list(range(20)))
     parser.add_argument("--device", choices=("cpu", "cuda"), default="cuda")
     parser.add_argument("--threads", type=int, default=4)
     args = parser.parse_args(argv)
+    selected = INSTRUCTION_SETS[args.instruction_set]
+    if args.tasks and not set(args.tasks).issubset({t.id for t in selected}):
+        parser.error("--tasks must belong to the selected --instruction-set")
+    tasks = [t for t in selected if args.tasks is None or t.id in args.tasks]
+    output_dir = args.output_dir or (RESULTS_DIR_DEFAULT if args.instruction_set == "unseen"
+                                    else RESULTS_DIR_DEFAULT.with_name("evaluation_" + args.instruction_set.replace("-", "_")))
     checkpoints = [args.checkpoint] if args.checkpoint else sorted(args.runs_dir.glob("*/status.pt"))
     if not checkpoints:
         parser.error(f"No status.pt checkpoints found under {args.runs_dir}")
     torch.set_num_threads(args.threads)
     device = torch.device(args.device)
-    tasks = [t for t in TEST_TASKS if t.id in args.tasks]
     for checkpoint in checkpoints:
-        evaluate(checkpoint, args.output_dir / checkpoint.parent.name, tasks, args.scene_seeds, device)
+        evaluate(checkpoint, output_dir / checkpoint.parent.name, tasks, args.scene_seeds, device)
 
 
 if __name__ == "__main__":
