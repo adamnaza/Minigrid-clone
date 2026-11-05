@@ -80,6 +80,8 @@ parser.add_argument("--llm-revision", default="main",
 
 parser.add_argument("--device", choices=("cpu", "cuda"), default="cpu")
 parser.add_argument("--threads", type=int, default=4)
+parser.add_argument("--first-pickup-reward-only", action="store_true",
+                    help="Award the correct-pickup bonus only before any wrong pickup")
 for name, default in REWARD_DEFAULTS.items():
     parser.add_argument("--" + name.replace("_", "-"), type=float, default=default)
 parser.add_argument("--checkpoint-frames", type=int, nargs="*", default=[1000000, 2000000, 3000000],
@@ -90,6 +92,7 @@ if __name__ == "__main__":
 
     # get reward config from pickup_tasks.py
     reward_config = {name: getattr(args, name) for name in REWARD_DEFAULTS}
+    reward_config["first_pickup_reward_only"] = args.first_pickup_reward_only
     torch.set_num_threads(args.threads)
     torch.set_num_interop_threads(1)
     device = torch.device(args.device)
@@ -108,6 +111,15 @@ if __name__ == "__main__":
         "model", "frames", "checkpoint_frames", "save_interval", "log_interval", "device", "threads"}}
     signature.update(environment_config=CONFIG)
     checkpoint_path = Path(model_dir) / "status.pt"
+
+    # Old checkpoints used the original reward mode. Do not mix objectives on resume.
+    try:
+        status = torch.load(checkpoint_path, map_location=device, weights_only=True)
+    except OSError:
+        status = {"num_frames": 0, "update": 0}
+    saved_mode = status.get("training_config", {}).get("first_pickup_reward_only", False)
+    if "model_state" in status and saved_mode != args.first_pickup_reward_only:
+        parser.error("Checkpoint reward mode differs; use a new --model name or match --first-pickup-reward-only")
 
     # Load loggers and Tensorboard writer
 
@@ -138,11 +150,6 @@ if __name__ == "__main__":
         envs.append(env)
     txt_logger.info("Environments loaded\n")
 
-    # Load training status
-    try:
-        status = torch.load(checkpoint_path, map_location=device, weights_only=True)
-    except OSError:
-        status = {"num_frames": 0, "update": 0}
     txt_logger.info("Training status loaded\n")
 
     # Load observations preprocessor

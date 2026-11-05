@@ -16,7 +16,7 @@ Held-out evaluation is available for both agents; the full-LLM agent remains def
 | [frozen_llm_preprocessor.py](frozen_llm_preprocessor.py) | Tokenizes missions with FLAN’s tokenizer, supplies attention masks, and reuses image preprocessing. |
 | [train.py](train.py) | Selects the agent and adapts the starter training script to create our environments, run PPO, log statistics, and save/resume checkpoints. |
 | [evaluate.py](evaluate.py) | Evaluates final checkpoints on shared held-out instructions/scenes and writes episode and summary CSVs with original and common returns. |
-| [run_reward_sweep.py](run_reward_sweep.py) | Runs the eight reward configurations for both agents sequentially, with separate run directories. |
+| [run_reward_sweep.py](run_reward_sweep.py) | Runs original or first-pickup-only reward sweeps for both agents, with separate run directories. |
 
 The GRU model comes from [rl_starter_files/model.py](../../rl_starter_files/model.py).
 The trainer also reuses the starter's observation preprocessing and logging
@@ -345,6 +345,58 @@ This checks both agents on one reward configuration. Select one agent using
 logging, and checkpoint intervals retain the shared trainer's defaults.
 Compare agents within each reward configuration; raw returns across different
 reward scales are not directly comparable measures of task performance.
+
+## First-pickup-only reward sweep
+
+```bash
+uv run --extra llm python -m minigrid.custom_scripts.run_reward_sweep --reward-mode first-pickup
+```
+
+Use `--reward-mode original` (the default) for the original reward sweep.
+The mode selects both reward behavior and default reward combinations; explicit
+`--wrong-rewards`, `--step-penalties`, and `--output-dir` override those defaults.
+Add `--dry-run` to preview commands without starting training. Defaults are 16
+sequential runs (GRU and frozen FLAN), seed 0, three million steps per run, CUDA,
+and no temporal memory (`--recurrence 1`). Wrong-pickup rewards are `-2`, `-6`,
+`-10`, and `-14`, each combined with per-action rewards `-1` and `-0.1`. The runner
+converts these action penalties to positive `--step-cost` values.
+
+Each run passes `--first-pickup-reward-only` to the trainer. A correct first actual
+pickup receives +10 before the step cost; after any wrong pickup, a correct pickup
+receives only the negative step reward. Wrong pickups retain their penalty and
+allow continuation. Correct pickups always end the episode; the limit remains
+500 steps. Empty pickup attempts do not consume bonus eligibility, which resets
+every episode. Omitting the flag from `train.py` retains original rewards.
+
+Outputs default to **`runs/first_pickup_reward_sweep/` at the repository root**,
+or `$RL_STORAGE/first_pickup_reward_sweep/` when set. Override with `--output-dir`.
+Run names include `_first_pickup`, for example:
+
+```text
+runs/first_pickup_reward_sweep/
+├── gru_wrong2_cost1_seed0_first_pickup/
+├── gru_wrong6_cost0p1_seed0_first_pickup/
+├── frozen-flan_wrong10_cost1_seed0_first_pickup/
+└── frozen-flan_wrong14_cost0p1_seed0_first_pickup/
+```
+
+Every run contains `status.pt`, milestone checkpoints, `config.json`, `log.csv`,
+`log.txt`, and TensorBoard events. Rerunning resumes saved runs; completed runs
+perform no additional updates. The reward-mode flag is saved in the checkpoint;
+the trainer rejects resuming with a different mode. Older checkpoints without
+the flag retain original rewards.
+
+```bash
+uv run --extra llm python -m minigrid.custom_scripts.evaluate \
+  --runs-dir runs/first_pickup_reward_sweep \
+  --output-dir results/evaluation_first_pickup
+```
+
+Evaluation restores the reward mode and records it in CSV metadata. Original
+return follows that mode. **Common return is unchanged:
+`10 * eventual_completion - 2 * wrong_pickups`**, even when the actual completion
+bonus was withheld. `success` still means eventual completion. First-pickup
+success can be calculated as `success == 1 and wrong_pickups == 0`.
 
 ## Evaluate trained agents
 

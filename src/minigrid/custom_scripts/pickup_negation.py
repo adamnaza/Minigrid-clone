@@ -47,11 +47,13 @@ class PickupNegation(PickupDist):
     def __init__(self, render_mode=None,
                  correct_reward=REWARD_DEFAULTS["correct_reward"],
                  wrong_reward=REWARD_DEFAULTS["wrong_reward"],
-                 step_cost=REWARD_DEFAULTS["step_cost"]):
+                 step_cost=REWARD_DEFAULTS["step_cost"],
+                 first_pickup_reward_only=False):
         #reward config
         self.correct_reward = correct_reward
         self.wrong_reward = wrong_reward
         self.step_cost = step_cost
+        self.first_pickup_reward_only = first_pickup_reward_only
 
         #store reward settings
         super().__init__(max_steps=CONFIG["max_steps"], render_mode=render_mode)
@@ -68,6 +70,7 @@ class PickupNegation(PickupDist):
         self.reward_range = (wrong_reward - step_cost, correct_reward - step_cost)
 
     def reset(self, *, seed=None, options=None):
+        self.had_wrong_pickup = False
         # Evaluation can select a task; ordinary resets still sample training tasks.
         task_id = (options or {}).get("task")
         self._selected_task = TASK_BY_ID[task_id] if task_id is not None else None
@@ -130,6 +133,8 @@ class PickupNegation(PickupDist):
         wrong = bool(acquired and not correct)
 
         # determine reward for action
-        reward = (self.correct_reward if correct else self.wrong_reward if wrong else 0.0) - self.step_cost
+        rewarded = correct and not (self.first_pickup_reward_only and self.had_wrong_pickup)
+        reward = (self.correct_reward if rewarded else self.wrong_reward if wrong else 0.0) - self.step_cost
+        self.had_wrong_pickup |= wrong
         info.update(success=correct, wrong_pickup=wrong)
         return obs, reward, terminated, truncated, info

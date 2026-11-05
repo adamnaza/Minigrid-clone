@@ -20,6 +20,7 @@ def load_agent(checkpoint, device):
     status = torch.load(checkpoint, map_location="cpu", weights_only=True)
     config = status["training_config"]
     rewards = {name: config[name] for name in REWARD_DEFAULTS}
+    rewards["first_pickup_reward_only"] = config.get("first_pickup_reward_only", False)
     env = PickupNegation(**rewards)
     memory = config.get("recurrence", 1) > 1
     agent = config.get("agent", "gru")
