@@ -467,8 +467,34 @@ for agent in gru frozen-flan; do
 done
 ```
 
-This is 720 episodes total. To include positives too, use `--instruction-set seen`
-and `--output-dir results/evaluation_seen` (2,160 episodes across four agents).
+This is 720 episodes total. To evaluate the same four agents on **all seen
+instructions** (18 positives and nine familiar negations), use:
+
+```bash
+original_runs=runs/reward_sweep
+first_pickup_runs=runs/first_pickup_reward_sweep
+
+for agent in gru frozen-flan; do
+  uv run python -m minigrid.custom_scripts.evaluate \
+    --checkpoint "$original_runs/${agent}_wrong2_cost1_seed0/status.pt" \
+    --instruction-set seen \
+    --output-dir results/evaluation_seen \
+    --device cuda || break
+
+  uv run python -m minigrid.custom_scripts.evaluate \
+    --checkpoint "$first_pickup_runs/${agent}_wrong2_cost1_seed2_first_pickup/status.pt" \
+    --instruction-set seen \
+    --output-dir results/evaluation_seen \
+    --device cuda || break
+done
+```
+
+This evaluates 27 instructions × 20 scene seeds = **540 episodes per agent**, or
+**2,160 total**. Adjust `original_runs` to the older path above if needed.
+Outputs go into `results/evaluation_seen/<run-name>/episodes.csv` and `summary.csv`.
+Rerunning replaces those files; existing `evaluation_seen_negative` and unseen
+evaluation results remain separate.
+
 Compare each checkpoint's seen versus unseen returns, wrong pickups, lengths, and
 first-pickup correctness (`success == 1 and wrong_pickups == 0`). The original and
 first-pickup experiments used different training seeds, so their differences do
