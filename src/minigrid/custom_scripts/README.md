@@ -398,6 +398,52 @@ return follows that mode. **Common return is unchanged:
 bonus was withheld. `success` still means eventual completion. First-pickup
 success can be calculated as `success == 1 and wrong_pickups == 0`.
 
+## Larger correct-pickup rewards
+
+Run the three larger-bonus configurations with both -2 and -5 wrong-pickup
+penalties for GRU and frozen FLAN:
+
+```bash
+uv run python -m minigrid.custom_scripts.run_reward_sweep \
+  --reward-mode large-correct --seed 2
+```
+
+| Configuration | First correct pickup | Correct pickup after a mistake | Wrong pickup | Per action |
+|---|---:|---:|---:|---:|
+| First-pickup only | +30 | 0 | -2 or -5 | -1 |
+| Larger first bonus, smaller later bonus | +30 | +10 | -2 or -5 | -1 |
+| Original behavior with larger bonus | +30 | +30 | -2 or -5 | -1 |
+
+These are twelve sequential runs, each with three million steps, no memory, and
+the same PPO defaults as the earlier sweeps. Every action incurs the cost,
+including pickups. Wrong pickups continue the episode; any correct pickup ends
+it. Failed pickup attempts do not consume first-pickup eligibility.
+Add `--dry-run` to preview. Rerun the same command to resume saved checkpoints.
+
+To run only the six new -5 configurations, use:
+
+```bash
+uv run python -m minigrid.custom_scripts.run_reward_sweep \
+  --reward-mode large-correct --seed 2 --wrong-rewards -5
+```
+
+Outputs default to `runs/large_correct_reward_sweep/` (or under `$RL_STORAGE`).
+Run names end in `_first30_later0`, `_first30_later10`, or `_first30_later30`,
+for example `gru_wrong2_cost1_seed2_first30_later10` or
+`gru_wrong5_cost1_seed2_first30_later10`. Existing run names are
+unchanged. For individual training runs, `--correct-reward` sets the first bonus
+and `--later-correct-reward` sets the bonus after a wrong pickup. If omitted,
+the later bonus equals the correct reward, or zero with `--first-pickup-reward-only`.
+
+```bash
+uv run python -m minigrid.custom_scripts.evaluate \
+  --runs-dir runs/large_correct_reward_sweep \
+  --output-dir results/evaluation_large_correct
+```
+
+Evaluation restores both bonuses from the checkpoint. Common return remains
+`10 * eventual_completion - 2 * wrong_pickups`, allowing comparison with earlier runs.
+
 ## Evaluate trained agents
 
 Evaluate every `*/status.pt` under the reward-sweep directory:

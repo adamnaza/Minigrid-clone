@@ -82,6 +82,8 @@ parser.add_argument("--device", choices=("cpu", "cuda"), default="cpu")
 parser.add_argument("--threads", type=int, default=4)
 parser.add_argument("--first-pickup-reward-only", action="store_true",
                     help="Award the correct-pickup bonus only before any wrong pickup")
+parser.add_argument("--later-correct-reward", type=float, default=None,
+                    help="Correct-pickup bonus after a wrong pickup; defaults to --correct-reward")
 for name, default in REWARD_DEFAULTS.items():
     parser.add_argument("--" + name.replace("_", "-"), type=float, default=default)
 parser.add_argument("--checkpoint-frames", type=int, nargs="*", default=[1000000, 2000000, 3000000],
@@ -93,6 +95,9 @@ if __name__ == "__main__":
     # get reward config from pickup_tasks.py
     reward_config = {name: getattr(args, name) for name in REWARD_DEFAULTS}
     reward_config["first_pickup_reward_only"] = args.first_pickup_reward_only
+    reward_config["later_correct_reward"] = args.later_correct_reward
+    if args.first_pickup_reward_only and args.later_correct_reward not in (None, 0):
+        parser.error("--first-pickup-reward-only requires a zero later-correct reward")
     torch.set_num_threads(args.threads)
     torch.set_num_interop_threads(1)
     device = torch.device(args.device)
@@ -120,6 +125,11 @@ if __name__ == "__main__":
     saved_mode = status.get("training_config", {}).get("first_pickup_reward_only", False)
     if "model_state" in status and saved_mode != args.first_pickup_reward_only:
         parser.error("Checkpoint reward mode differs; use a new --model name or match --first-pickup-reward-only")
+    if "model_state" in status:
+        saved = status.get("training_config", {})
+        for name, default in {**REWARD_DEFAULTS, "later_correct_reward": None}.items():
+            if saved.get(name, default) != reward_config[name]:
+                parser.error(f"Checkpoint {name} differs; use a new --model name for different rewards")
 
     # Load loggers and Tensorboard writer
 
