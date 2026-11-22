@@ -84,6 +84,8 @@ parser.add_argument("--first-pickup-reward-only", action="store_true",
                     help="Award the correct-pickup bonus only before any wrong pickup")
 parser.add_argument("--later-correct-reward", type=float, default=None,
                     help="Correct-pickup bonus after a wrong pickup; defaults to --correct-reward")
+parser.add_argument("--terminate-on-wrong-pickup", action="store_true",
+                    help="End the episode with failure when an incorrect object is picked up")
 for name, default in REWARD_DEFAULTS.items():
     parser.add_argument("--" + name.replace("_", "-"), type=float, default=default)
 parser.add_argument("--checkpoint-frames", type=int, nargs="*", default=[1000000, 2000000, 3000000],
@@ -96,6 +98,7 @@ if __name__ == "__main__":
     reward_config = {name: getattr(args, name) for name in REWARD_DEFAULTS}
     reward_config["first_pickup_reward_only"] = args.first_pickup_reward_only
     reward_config["later_correct_reward"] = args.later_correct_reward
+    reward_config["terminate_on_wrong_pickup"] = args.terminate_on_wrong_pickup
     if args.first_pickup_reward_only and args.later_correct_reward not in (None, 0):
         parser.error("--first-pickup-reward-only requires a zero later-correct reward")
     torch.set_num_threads(args.threads)
@@ -127,7 +130,8 @@ if __name__ == "__main__":
         parser.error("Checkpoint reward mode differs; use a new --model name or match --first-pickup-reward-only")
     if "model_state" in status:
         saved = status.get("training_config", {})
-        for name, default in {**REWARD_DEFAULTS, "later_correct_reward": None}.items():
+        for name, default in {**REWARD_DEFAULTS, "later_correct_reward": None,
+                              "terminate_on_wrong_pickup": False}.items():
             if saved.get(name, default) != reward_config[name]:
                 parser.error(f"Checkpoint {name} differs; use a new --model name for different rewards")
 

@@ -28,6 +28,7 @@ def load_agent(checkpoint, device):
     rewards = {name: config[name] for name in REWARD_DEFAULTS}
     rewards["first_pickup_reward_only"] = config.get("first_pickup_reward_only", False)
     rewards["later_correct_reward"] = config.get("later_correct_reward")
+    rewards["terminate_on_wrong_pickup"] = config.get("terminate_on_wrong_pickup", False)
     env = PickupNegation(**rewards)
     memory = config.get("recurrence", 1) > 1
     agent = config.get("agent", "gru")
@@ -70,7 +71,7 @@ def run_episode(env, model, preprocess, task, scene_seed, device):
             "scene_seed": scene_seed, "action_seed": action_seed,
             "original_return": total, "common_return": 10 * success - 2 * wrong_pickups,
             "episode_length": length, "wrong_pickups": wrong_pickups,
-            "success": success, "timeout": int(truncated and not success)}
+            "success": success, "timeout": int(truncated and not terminated)}
 
 
 def summarize(rows):

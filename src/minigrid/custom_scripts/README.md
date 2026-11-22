@@ -444,6 +444,47 @@ uv run python -m minigrid.custom_scripts.evaluate \
 Evaluation restores both bonuses from the checkpoint. Common return remains
 `10 * eventual_completion - 2 * wrong_pickups`, allowing comparison with earlier runs.
 
+## End the episode on an incorrect pickup
+
+```bash
+uv run python -m minigrid.custom_scripts.run_reward_sweep \
+  --reward-mode stop-on-wrong --seed 0 --device cuda
+```
+
+This runs GRU and frozen FLAN with +10 for a correct pickup, incorrect-pickup
+penalties of -10 and -2, each with step costs of 1, 0.1, and 0 (twelve runs).
+Both correct and incorrect
+pickups end the episode. A failed attempt to pick up an object does not end it.
+Every action incurs the step cost, including the final pickup: at cost 1,
+the correct-pickup step pays +9 and the incorrect-pickup step pays -11.
+The 500-step limit, three-million-step training budget, and no-memory setting
+remain the defaults. Add `--dry-run` to preview, or change `--seed` for another run.
+
+For training that continues after an SSH disconnect, launch from the repository root:
+
+```bash
+tmux new-session -d -s babyai-stop-on-wrong 'uv run python -m minigrid.custom_scripts.run_reward_sweep --reward-mode stop-on-wrong --seed 0 --device cuda'
+```
+
+Outputs go to `runs/stop_on_wrong_reward_sweep/`, or under `$RL_STORAGE` if set.
+Names include `_stop_on_wrong`, for example `gru_wrong10_cost0p1_seed0_stop_on_wrong`.
+Individual training runs can enable the behavior with `--terminate-on-wrong-pickup`.
+The setting is saved in checkpoints and restored by evaluation; older checkpoints
+default to continuing after incorrect pickups. Resuming with different termination
+settings is rejected. Rerunning the same command resumes the saved training progress.
+
+```bash
+uv run python -m minigrid.custom_scripts.evaluate \
+  --runs-dir runs/stop_on_wrong_reward_sweep \
+  --output-dir results/evaluation_stop_on_wrong --device cuda
+```
+
+Success and correct-first-pickup rates coincide in this environment. Common return
+keeps its existing formula (`10 * success - 2 * wrong_pickups`). Episodes that end
+on an incorrect pickup are failures, not timeouts, including at the time limit.
+Because termination changes the task, interpret comparisons to continuation runs
+alongside the termination setting.
+
 ## Evaluate trained agents
 
 Evaluate every `*/status.pt` under the reward-sweep directory:

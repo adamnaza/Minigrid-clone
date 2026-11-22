@@ -48,12 +48,14 @@ class PickupNegation(PickupDist):
                  correct_reward=REWARD_DEFAULTS["correct_reward"],
                  wrong_reward=REWARD_DEFAULTS["wrong_reward"],
                  step_cost=REWARD_DEFAULTS["step_cost"],
-                 first_pickup_reward_only=False, later_correct_reward=None):
+                 first_pickup_reward_only=False, later_correct_reward=None,
+                 terminate_on_wrong_pickup=False):
         #reward config
         self.correct_reward = correct_reward
         self.wrong_reward = wrong_reward
         self.step_cost = step_cost
         self.first_pickup_reward_only = first_pickup_reward_only
+        self.terminate_on_wrong_pickup = terminate_on_wrong_pickup
         if first_pickup_reward_only and later_correct_reward not in (None, 0):
             raise ValueError("First-pickup-only rewards require a zero later-correct reward")
         self.later_correct_reward = (0.0 if first_pickup_reward_only else
@@ -141,5 +143,6 @@ class PickupNegation(PickupDist):
         correct_bonus = self.later_correct_reward if self.had_wrong_pickup else self.correct_reward
         reward = (correct_bonus if correct else self.wrong_reward if wrong else 0.0) - self.step_cost
         self.had_wrong_pickup |= wrong
+        terminated = terminated or (wrong and self.terminate_on_wrong_pickup)
         info.update(success=correct, wrong_pickup=wrong)
         return obs, reward, terminated, truncated, info

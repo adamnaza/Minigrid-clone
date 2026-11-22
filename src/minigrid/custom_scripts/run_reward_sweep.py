@@ -13,7 +13,7 @@ from minigrid.custom_scripts import get_storage_dir
 def main(argv=None):
     parser = argparse.ArgumentParser(description=__doc__)
     storage = get_storage_dir()
-    parser.add_argument("--reward-mode", choices=("original", "first-pickup", "large-correct"), default="original",
+    parser.add_argument("--reward-mode", choices=("original", "first-pickup", "large-correct", "stop-on-wrong"), default="original",
                         help="Select reward behavior and default sweep configurations")
     parser.add_argument("--output-dir", type=Path)
     parser.add_argument("--agents", nargs="+", choices=("gru", "frozen-flan"),
@@ -37,6 +37,7 @@ def main(argv=None):
     args = parser.parse_args(argv)
 
     first_pickup_reward_only = args.reward_mode == "first-pickup"
+    terminate_on_wrong_pickup = args.reward_mode == "stop-on-wrong"
     sweep_name = "first_pickup_reward_sweep" if first_pickup_reward_only else "reward_sweep"
     # (first-correct bonus, later-correct bonus, first-pickup-only flag)
     reward_variants = [(10.0, None, first_pickup_reward_only)]
@@ -47,6 +48,12 @@ def main(argv=None):
             args.wrong_rewards = [-2.0, -5.0]
         if args.step_penalties is None:
             args.step_penalties = [-1.0]
+    if terminate_on_wrong_pickup:
+        sweep_name = "stop_on_wrong_reward_sweep"
+        if args.wrong_rewards is None:
+            args.wrong_rewards = [-10.0, -2.0]
+        if args.step_penalties is None:
+            args.step_penalties = [-1.0, -0.1, 0.0]
     if args.wrong_rewards is None:
         args.wrong_rewards = [-2.0, -6.0, -10.0, -14.0] if first_pickup_reward_only else [-2.0, -10.0]
     if args.step_penalties is None:
@@ -68,6 +75,8 @@ def main(argv=None):
             model_name += f"_first{correct_reward:g}_later{later_reward:g}"
         elif first_only:
             model_name += "_first_pickup"
+        if terminate_on_wrong_pickup:
+            model_name += "_stop_on_wrong"
         if args.recurrence > 1:
             model_name += f"_recurrence{args.recurrence}"
         command = [sys.executable, "-m", "minigrid.custom_scripts.train",
@@ -76,6 +85,8 @@ def main(argv=None):
                    "--step-cost", str(step_cost)]
         if first_only:
             command.append("--first-pickup-reward-only")
+        if terminate_on_wrong_pickup:
+            command.append("--terminate-on-wrong-pickup")
         if later_reward is not None:
             command.extend(["--later-correct-reward", str(later_reward)])
         for name in ("frames", "seed", "device", "procs", "frames_per_proc",
