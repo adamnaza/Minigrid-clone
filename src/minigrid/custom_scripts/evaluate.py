@@ -29,6 +29,7 @@ def load_agent(checkpoint, device):
     rewards["first_pickup_reward_only"] = config.get("first_pickup_reward_only", False)
     rewards["later_correct_reward"] = config.get("later_correct_reward")
     rewards["terminate_on_wrong_pickup"] = config.get("terminate_on_wrong_pickup", False)
+    rewards["scene_setup"] = config.get("scene_setup", "mixed")
     env = PickupNegation(**rewards)
     memory = config.get("recurrence", 1) > 1
     agent = config.get("agent", "gru")
@@ -94,8 +95,12 @@ def summarize(rows):
 
 def evaluate(checkpoint, output_dir, tasks, seeds, device):
     env, model, preprocess, metadata = load_agent(checkpoint, device)
-    metadata["instruction_categories"] = ",".join(sorted({task.category for task in tasks}))
     try:
+        if env.scene_setup != "mixed":
+            tasks = [t for t in tasks if t.object_type == "ball"]
+            if not tasks:
+                raise ValueError("No ball instructions selected for this ball-only checkpoint")
+        metadata["instruction_categories"] = ",".join(sorted({task.category for task in tasks}))
         output_dir.mkdir(parents=True, exist_ok=True)
         (output_dir / "summary.csv").unlink(missing_ok=True)
         rows = []

@@ -485,6 +485,173 @@ on an incorrect pickup are failures, not timeouts, including at the time limit.
 Because termination changes the task, interpret comparisons to continuation runs
 alongside the termination setting.
 
+## Current plan: two-ball negation study
+
+The current priority is the **two-ball** environment, comparing GRU and frozen
+FLAN with eight reward configurations and training seeds 0, 1, and 2. Five-ball
+experiments and disjunction are deferred. Use the preset below rather than the
+earlier broad ball-comparison loop.
+
+| Configuration | First correct | Later correct | Wrong pickup | Step cost | End on wrong pickup? |
+|---|---:|---:|---:|---:|---|
+| Original baseline | +10 | +10 | -2 | 1 | No |
+| Larger completion bonus | +30 | +30 | -2 | 1 | No |
+| First-pickup baseline | +10 | 0 | -2 | 1 | No |
+| Larger first-pickup bonus | +30 | 0 | -2 | 1 | No |
+| Smaller recovery bonus | +30 | +10 | -2 | 1 | No |
+| Stronger wrong penalty | +30 | +10 | -5 | 1 | No |
+| Termination comparison | +10 | — | -2 | 1 | Yes |
+| Primary configuration | +10 | — | -2 | 0.1 | Yes |
+
+Step cost is subtracted on every action, including the terminal pickup. A correct
+pickup always ends the episode. All scenes contain two balls of distinct colors
+with exactly one valid target. Training uses six positive instructions and three
+seen negations, sampled uniformly (2:1 positive/negative). Negations of purple,
+yellow, and grey are held out. Partial observation and the 500-step limit remain.
+
+From the repository root on each remote computer, use a different training seed:
+
+```bash
+tmux new-session -d -s babyai-negation-seed0 'uv run python -m minigrid.custom_scripts.run_reward_sweep --reward-mode negation-study --seed 0 --device cuda'
+```
+
+For the other two computers, change both `seed0` and `--seed 0` to seed 1 or 2.
+There are **16 sequential runs per seed**, three million steps per run, no memory,
+and **48 runs across all three seeds**. Earlier lab timings suggest roughly
+18–19 training hours per seed, with throughput dependent on the computer and
+environment. Keep the same repository revision and dependency versions on all
+computers. Inspect with `tmux attach -t babyai-negation-seed0`; detach with
+Ctrl+B, then D. Add `--dry-run` to preview commands without launching training.
+
+The preset automatically selects `two-balls` and rejects conflicting reward,
+scene, or memory overrides. Results default to `runs/negation_study/`, or under
+`$RL_STORAGE`. Names retain the seed, reward settings, and `_two_balls` suffix.
+Rerunning resumes saved checkpoints. If these same runs were already started in
+`runs/ball_comparison/`, pass `--output-dir runs/ball_comparison` to reuse those
+checkpoints. Changing the preset does not change an already-running tmux queue.
+
+After training, evaluate unseen and seen instructions into separate folders:
+
+```bash
+uv run python -m minigrid.custom_scripts.evaluate \
+  --runs-dir runs/negation_study --output-dir results/evaluation_negation_study \
+  --device cuda
+
+uv run python -m minigrid.custom_scripts.evaluate \
+  --runs-dir runs/negation_study --instruction-set seen \
+  --output-dir results/evaluation_negation_study_seen --device cuda
+```
+
+Each checkpoint gets 60 unseen episodes (3 instructions × 20 scene seeds) and
+180 seen episodes (9 instructions × 20). Separate seen-positive and seen-negative
+episodes during analysis. Report correct-first-pickup rate, both returns, wrong
+pickups, success, timeouts, and episode length, including variation across training
+seeds. Choose settings on seen-task evidence rather than repeatedly tuning to the
+held-out negation scores. The primary configuration above is fixed in advance;
+the other seven are reward-design comparisons.
+
+## Earlier broader ball-only scene comparison (deferred)
+
+Select `--scene-setup two-balls` or `--scene-setup five-balls` in the trainer or
+sweep runner. The default `mixed` retains the original five mixed objects.
+Both ball setups have randomly placed balls with distinct colors, include the
+instruction's named color, and require every ball to be reachable without moving
+other objects. Room size, partial observations, action set, and 500-step limit
+remain unchanged.
+
+| Setup | Objects | Valid targets for a positive instruction | Valid targets for a negation |
+|---|---:|---:|---:|
+| `two-balls` | 2 balls, 2 colors | 1 | 1 |
+| `five-balls` | 5 balls, 5 colors | 1 | 4 |
+
+Training samples uniformly from nine ball instructions: six positive colors and
+three negated colors (red, green, blue). This preserves the 2:1 positive/negative
+episode ratio. Negations of purple, yellow, and grey remain held out. For an
+explicit scene seed and named color, positive and negative instructions generate
+the same scene and agent pose, with different target sets. Training still samples
+new scenes each episode; it does not schedule explicit pairs of episodes.
+
+The five-ball negative task has an 80% valid-target fraction, compared with 50%
+for two balls. Those are uniform-object-choice baselines, not random-action policy
+success rates. Account for this difference when interpreting first-pickup accuracy.
+
+The comparison matrix uses -1 per action throughout and retains only rewards
+with existing mixed-environment evaluations, including single-seed comparisons:
+
+| Behavior | Correct bonus | Wrong penalties |
+|---|---:|---|
+| Continue after mistakes (`original`) | +10 on any correct pickup | -2 |
+| Continue after mistakes (`original`) | +30 on any correct pickup | -2 |
+| Continue with a smaller recovery bonus (`original`) | +30 first correct; +10 later | -2, -5 |
+| First-pickup bonus only (`first-pickup`) | +10 first correct; 0 later | -2 |
+| First-pickup bonus only (`first-pickup`) | +30 first correct; 0 later | -2 |
+| End on any actual pickup (`stop-on-wrong`) | +10 correct | -2, -10 |
+
+This gives **32 runs per seed**: eight reward configurations, two scene setups,
+and two agents. The commands use seed 2; the existing +10 original-reward mixed
+comparison uses seed 0, so that particular comparison is not seed matched.
+From the repository root,
+start a persistent session with `tmux new -s babyai-balls`, then run:
+
+```bash
+for setup in two-balls five-balls; do
+  for mode in original first-pickup stop-on-wrong; do
+    for bonus in 10 30; do
+      if [ "$mode" = stop-on-wrong ] && [ "$bonus" = 30 ]; then
+        continue
+      fi
+      wrong_rewards="-2"
+      if [ "$mode" = stop-on-wrong ]; then
+        wrong_rewards="-2 -10"
+      fi
+      uv run python -m minigrid.custom_scripts.run_reward_sweep \
+        --scene-setup "$setup" --reward-mode "$mode" \
+        --correct-reward "$bonus" --wrong-rewards $wrong_rewards \
+        --step-penalties -1 --seed 2 --device cuda \
+        --output-dir runs/ball_comparison || exit
+    done
+  done
+  uv run python -m minigrid.custom_scripts.run_reward_sweep \
+    --scene-setup "$setup" --reward-mode original \
+    --correct-reward 30 --later-correct-reward 10 --wrong-rewards -2 -5 \
+    --step-penalties -1 --seed 2 --device cuda \
+    --output-dir runs/ball_comparison || exit
+done
+```
+
+Each run uses three million steps and no memory by default. Detach with Ctrl+B,
+then D; reattach with `tmux attach -t babyai-balls`. Add `--dry-run` to the sweep
+command to preview. Repeating the loop resumes checkpoints. Run names include
+`_two_balls` or `_five_balls`; non-default correct bonuses include `_correct30`.
+An explicit later bonus uses `_first30_later10` instead, matching the reward labels
+of the existing mixed-environment runs.
+The checkpoint records the setup and rejects resuming with a different setup.
+Without an explicit `--output-dir`, each sweep directory also gets a scene suffix.
+
+To queue **only the eight new +30 first / +10 later runs**, use:
+
+```bash
+tmux new-session -d -s babyai-balls-recovery 'for setup in two-balls five-balls; do uv run python -m minigrid.custom_scripts.run_reward_sweep --scene-setup "$setup" --reward-mode original --correct-reward 30 --later-correct-reward 10 --wrong-rewards -2 -5 --step-penalties -1 --seed 2 --device cuda --output-dir runs/ball_comparison || exit; done'
+```
+
+Incorrect pickups continue the episode. The later bonus applies after any prior
+incorrect pickup; failed pickup attempts do not reduce the bonus. The net reward
+on a first-correct pickup is +29, and on a later-correct pickup is +9, after the
+action cost. Both penalties have three-seed mixed-environment comparisons.
+
+Evaluate both setups from their saved checkpoints:
+
+```bash
+uv run python -m minigrid.custom_scripts.evaluate \
+  --runs-dir runs/ball_comparison --output-dir results/evaluation_ball_comparison \
+  --device cuda
+```
+
+Evaluation automatically restores the scene setup and selects only ball
+instructions. Unseen evaluation has 3 instructions × 20 seeds = 60 episodes per
+agent. `--instruction-set seen` has 9 × 20 = 180 episodes (use a separate output
+directory). CSV metadata includes `scene_setup`; old checkpoints default to `mixed`.
+
 ## Evaluate trained agents
 
 Evaluate every `*/status.pt` under the reward-sweep directory:

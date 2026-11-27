@@ -3,7 +3,9 @@ from gymnasium import spaces
 from minigrid.envs.babyai.pickup import PickupDist
 from minigrid.envs.babyai.core.verifier import ObjDesc, PickupInstr
 
-from minigrid.custom_scripts.pickup_tasks import CONFIG, COLORS, TYPES, TASK_BY_ID, TRAIN_TASKS, REWARD_DEFAULTS
+from minigrid.custom_scripts.pickup_tasks import (
+    CONFIG, COLORS, TYPES, TASK_BY_ID, REWARD_DEFAULTS, SCENE_OBJECT_COUNTS, get_training_tasks,
+)
 
 # inherits from ObjDesc class in babyai -> verifier.py
 # ObjDesc already knows how to find objects by type/color with find_matching_objs()
@@ -49,7 +51,10 @@ class PickupNegation(PickupDist):
                  wrong_reward=REWARD_DEFAULTS["wrong_reward"],
                  step_cost=REWARD_DEFAULTS["step_cost"],
                  first_pickup_reward_only=False, later_correct_reward=None,
-                 terminate_on_wrong_pickup=False):
+                 terminate_on_wrong_pickup=False, scene_setup="mixed"):
+        self.scene_setup = scene_setup
+        self.object_count = SCENE_OBJECT_COUNTS[scene_setup]
+        self.training_tasks = get_training_tasks(scene_setup)
         #reward config
         self.correct_reward = correct_reward
         self.wrong_reward = wrong_reward
@@ -81,19 +86,36 @@ class PickupNegation(PickupDist):
         # Evaluation can select a task; ordinary resets still sample training tasks.
         task_id = (options or {}).get("task")
         self._selected_task = TASK_BY_ID[task_id] if task_id is not None else None
+        if self.scene_setup != "mixed" and self._selected_task is not None and self._selected_task.object_type != "ball":
+            raise ValueError("Ball-only scenes require a ball instruction")
         return super().reset(seed=seed, options=options)
 
     # choose an instruction, then generate an environment to satisfy it
     def _gen_grid(self, width, height):
         # MiniGrid has seeded its RNG before calling this method. Select once,
         # outside RoomGridLevel's rejection loop, so retries cannot change the task.
-        self.task = self._selected_task or self._rand_elem(TRAIN_TASKS)
+        self.task = self._selected_task or self._rand_elem(self.training_tasks)
         # calls our gen_mission override to create environments
         super()._gen_grid(width, height)
 
 
     def gen_mission(self):
         task = self.task
+        if self.scene_setup != "mixed":
+            # Include the named color and sample other colors without replacement.
+            # Positive/negative counterparts use the same scene for a fixed seed.
+            colors = [task.color]
+            while len(colors) < self.object_count:
+                colors.append(self._rand_elem([c for c in COLORS if c not in colors]))
+            for color in colors:
+                self.add_object(0, 0, "ball", color)
+        else:
+            self._gen_mixed_objects(task)
+        self.place_agent(0, 0)
+        self.check_objs_reachable()
+        self.instrs = TaskPickupInstr(TaskDesc(task), strict=False)
+
+    def _gen_mixed_objects(self, task):
         # gaurantee there will be at least one target object with incorrect target color
         other_color = self._rand_elem([c for c in COLORS if c != task.color])
         # gaurantee there will be at least one object that is the target color, but not the target object
@@ -110,11 +132,6 @@ class PickupNegation(PickupDist):
         
         #adds in two more random objects/color pairs
         self.add_distractors(0, 0, num_distractors=2, all_unique=True)
-        #randomly place/orient agent
-        self.place_agent(0, 0)
-        self.check_objs_reachable()
-        # setup pickup instruction for training episode
-        self.instrs = TaskPickupInstr(TaskDesc(task), strict=False)
 
 
     def step(self, action):

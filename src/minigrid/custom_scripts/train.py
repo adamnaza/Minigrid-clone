@@ -7,7 +7,7 @@ import sys
 import torch
 
 from minigrid.custom_scripts import TRAIN_ENV
-from minigrid.custom_scripts.pickup_tasks import CONFIG, TRAIN_TASKS, REWARD_DEFAULTS
+from minigrid.custom_scripts.pickup_tasks import CONFIG, REWARD_DEFAULTS, SCENE_OBJECT_COUNTS, get_training_tasks
 from minigrid.custom_scripts import get_storage_dir
 
 os.environ.setdefault("RL_STORAGE", str(get_storage_dir()))
@@ -86,6 +86,7 @@ parser.add_argument("--later-correct-reward", type=float, default=None,
                     help="Correct-pickup bonus after a wrong pickup; defaults to --correct-reward")
 parser.add_argument("--terminate-on-wrong-pickup", action="store_true",
                     help="End the episode with failure when an incorrect object is picked up")
+parser.add_argument("--scene-setup", choices=tuple(SCENE_OBJECT_COUNTS), default="mixed")
 for name, default in REWARD_DEFAULTS.items():
     parser.add_argument("--" + name.replace("_", "-"), type=float, default=default)
 parser.add_argument("--checkpoint-frames", type=int, nargs="*", default=[1000000, 2000000, 3000000],
@@ -99,6 +100,10 @@ if __name__ == "__main__":
     reward_config["first_pickup_reward_only"] = args.first_pickup_reward_only
     reward_config["later_correct_reward"] = args.later_correct_reward
     reward_config["terminate_on_wrong_pickup"] = args.terminate_on_wrong_pickup
+    reward_config["scene_setup"] = args.scene_setup
+    training_tasks = get_training_tasks(args.scene_setup)
+    environment_config = {**CONFIG, "scene_setup": args.scene_setup,
+                          "objects": SCENE_OBJECT_COUNTS[args.scene_setup]}
     if args.first_pickup_reward_only and args.later_correct_reward not in (None, 0):
         parser.error("--first-pickup-reward-only requires a zero later-correct reward")
     torch.set_num_threads(args.threads)
@@ -117,7 +122,7 @@ if __name__ == "__main__":
     # Record settings with logs and checkpoints.
     signature = {k: v for k, v in vars(args).items() if k not in {
         "model", "frames", "checkpoint_frames", "save_interval", "log_interval", "device", "threads"}}
-    signature.update(environment_config=CONFIG)
+    signature.update(environment_config=environment_config)
     checkpoint_path = Path(model_dir) / "status.pt"
 
     # Old checkpoints used the original reward mode. Do not mix objectives on resume.
@@ -131,7 +136,7 @@ if __name__ == "__main__":
     if "model_state" in status:
         saved = status.get("training_config", {})
         for name, default in {**REWARD_DEFAULTS, "later_correct_reward": None,
-                              "terminate_on_wrong_pickup": False}.items():
+                              "terminate_on_wrong_pickup": False, "scene_setup": "mixed"}.items():
             if saved.get(name, default) != reward_config[name]:
                 parser.error(f"Checkpoint {name} differs; use a new --model name for different rewards")
 
@@ -181,7 +186,7 @@ if __name__ == "__main__":
             preprocess_obss.vocab.load_vocab(status["vocab"])
         else:
             # All words come from allowed training missions; no held-out task is exposed.
-            for task in TRAIN_TASKS:
+            for task in training_tasks:
                 for word in task.mission.split():
                     preprocess_obss.vocab[word]
     txt_logger.info("Observations preprocessor loaded")
@@ -229,7 +234,7 @@ if __name__ == "__main__":
         status = {"num_frames": num_frames, "update": update,
                   "model_state": acmodel.state_dict(), "optimizer_state": algo.optimizer.state_dict(),
                   "training_config": signature,
-                  "environment_config": CONFIG}
+                  "environment_config": environment_config}
         if args.agent == "gru":
             status["vocab"] = preprocess_obss.vocab.vocab
         path = Path(model_dir) / filename

@@ -5,6 +5,7 @@ TYPES = ("ball", "key", "box")
 TRAIN_COLORS = ("red", "green", "blue")
 HELD_OUT_COLORS = ("purple", "yellow", "grey")
 COLORS = TRAIN_COLORS + HELD_OUT_COLORS
+SCENE_OBJECT_COUNTS = {"mixed": 5, "two-balls": 2, "five-balls": 5}
 
 #training environment config
 CONFIG = {"room_size": 7, "objects": 5, "max_steps": 500,
@@ -61,3 +62,7 @@ TASKS = tuple(Task(kind, color, obj) for kind in ("positive", "negative")
 TASK_BY_ID = {task.id: task for task in TASKS}
 # builds the training instruction set (removes withheld instructions )
 TRAIN_TASKS = tuple(task for task in TASKS if task.category != "held_out_negative")
+
+
+def get_training_tasks(scene_setup="mixed"):
+    return TRAIN_TASKS if scene_setup == "mixed" else tuple(t for t in TRAIN_TASKS if t.object_type == "ball")
