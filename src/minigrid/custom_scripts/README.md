@@ -1,7 +1,7 @@
 # Custom BabyAI training scripts
 
 This folder trains **GRU/CNN and frozen FLAN-T5/CNN agents** on positive and
-color-negation pickup instructions, using `BabyAI-PickupDist-v0` as the base.
+color-negation or disjunction pickup instructions, using `BabyAI-PickupDist-v0` as the base.
 Both agents share the environment, rewards, PPO loop, and downstream architecture.
 Held-out evaluation is available for both agents; the full-LLM agent remains deferred.
 
@@ -11,7 +11,9 @@ Held-out evaluation is available for both agents; the full-LLM agent remains def
 |---|---|
 | [pickup_tasks.py](pickup_tasks.py) | Defines instruction templates, colors, object types, correct-object matching, the training instruction list, and default environment/reward settings. |
 | [pickup_negation.py](pickup_negation.py) | Extends BabyAI's `PickupDist`. Selects instructions, places objects, verifies pickups, and calculates rewards. |
-| [__init__.py](__init__.py) | Registers the training environment as `BabyAI-PickupNegation-v0` when the package is imported. |
+| [disjunction_tasks.py](disjunction_tasks.py) | Defines positive/OR instructions, the held-out color pairs, and the three scene conditions. |
+| [pickup_disjunction.py](pickup_disjunction.py) | Generates three-ball scenes; reuses the pickup verifier and reward implementation from the negation environment. |
+| [__init__.py](__init__.py) | Registers `BabyAI-PickupNegation-v0` and `BabyAI-PickupDisjunction-v0`. |
 | [frozen_llm_model.py](frozen_llm_model.py) | Reuses the starter actor-critic, replacing GRU text processing with frozen FLAN, masked mean pooling, and a learned linear projection. |
 | [frozen_llm_preprocessor.py](frozen_llm_preprocessor.py) | Tokenizes missions with FLAN’s tokenizer, supplies attention masks, and reuses image preprocessing. |
 | [train.py](train.py) | Selects the agent and adapts the starter training script to create our environments, run PPO, log statistics, and save/resume checkpoints. |
@@ -487,9 +489,9 @@ alongside the termination setting.
 
 ## Current plan: two-ball negation study
 
-The current priority is the **two-ball** environment, comparing GRU and frozen
+This study uses the **two-ball** environment, comparing GRU and frozen
 FLAN with eight reward configurations and training seeds 0, 1, and 2. Five-ball
-experiments and disjunction are deferred. Use the preset below rather than the
+experiments remain deferred; the disjunction study is described below. Use the preset below rather than the
 earlier broad ball-comparison loop.
 
 | Configuration | First correct | Later correct | Wrong pickup | Step cost | End on wrong pickup? |
@@ -549,6 +551,118 @@ pickups, success, timeouts, and episode length, including variation across train
 seeds. Choose settings on seen-task evidence rather than repeatedly tuning to the
 held-out negation scores. The primary configuration above is fixed in advance;
 the other seven are reward-design comparisons.
+
+## Disjunction study: three balls
+
+The instruction is `pick up a red ball or a blue ball`, with either alternative
+accepted. All scenes contain three differently colored balls in the same 7×7 room,
+with partial observations, no memory, and a 500-step limit.
+
+Training explicitly samples **50% positive instructions and 50% disjunctions**.
+Positive instructions cover all six colors. Of the 15 unordered color pairs,
+12 are used in training and these three are held out in **both word orders**:
+red/green, blue/purple, yellow/grey. Every color has four training partners and one
+held-out partner. Training samples both word orders equally. The three OR scene
+conditions are equally probable and are fixed through scene-generation retries:
+
+| Condition for “red or blue” | Example balls | Valid colors |
+|---|---|---|
+| `first-only` | red, yellow, grey | red |
+| `second-only` | blue, yellow, grey | blue |
+| `both` | red, blue, yellow | red or blue |
+
+Positive scenes contain the requested color and two other colors. Positions,
+placement order, and agent pose are randomized, and all objects must be reachable.
+
+The preset uses six reward configurations for each of GRU and frozen FLAN:
+
+| Behavior | First correct | Correct after a mistake | Wrong pickup | Step cost |
+|---|---:|---:|---:|---:|
+| End on any pickup | +10 | — | −2, end | 0.1 |
+| End on any pickup | +10 | — | −2, end | 1 |
+| Continue after mistakes; first-pickup-only bonus | +10 | 0 | −2, continue | 0.1 |
+| Continue after mistakes; first-pickup-only bonus | +10 | 0 | −2, continue | 1 |
+| Continue after mistakes; bonus on any correct pickup | +10 | +10 | −2, continue | 0.1 |
+| Continue after mistakes; bonus on any correct pickup | +10 | +10 | −2, continue | 1 |
+
+Every correct pickup ends the episode. Step cost is subtracted on **every** action,
+including pickups. A failed attempt that acquires no object does not remove bonus
+eligibility. The default budget is three million total steps, seed 0.
+
+Run from the repository root, changing the session name and seed on each computer:
+
+```bash
+tmux new-session -d -s babyai-disjunction-seed0 'uv run python -m minigrid.custom_scripts.run_reward_sweep --reward-mode disjunction-study --seed 0 --device cuda'
+```
+
+There are **12 runs per seed, 36 across seeds 0/1/2**. Add `--dry-run` to inspect
+the commands. Rerunning resumes the same checkpoints; completed runs receive no
+further updates. Do not run two queues that write to the same model directories.
+
+Continuation runs that always award the correct-pickup bonus have neither the
+`_first_pickup` nor `_stop_on_wrong` suffix, for example
+`gru_wrong2_cost1_seed0_three_balls_disjunction`. Existing run names are unchanged.
+An already-running queue will not pick up changes to this preset; rerun the updated
+command after that queue exits to include the added configurations.
+
+Checkpoints and logs go to `runs/disjunction_study/` (or `$RL_STORAGE/disjunction_study`).
+For example:
+
+```text
+runs/disjunction_study/
+  gru_wrong2_cost0p1_seed0_stop_on_wrong_three_balls_disjunction/
+    status.pt
+    config.json
+    log.csv
+    log.txt
+    ...
+  frozen-flan_wrong2_cost1_seed0_first_pickup_three_balls_disjunction/
+    ...
+```
+
+Individual training also supports `--task-family disjunction`, which selects the
+registered disjunction environment and `three-balls` automatically. Specify the
+reward flags explicitly for individual runs; the six-setting preset supplies them.
+The checkpoint stores the task family and scene settings. Negation remains the
+default for old checkpoints; resuming a checkpoint under another family is rejected.
+
+After training, evaluate each completed checkpoint on seen and unseen instructions:
+
+```bash
+uv run python -m minigrid.custom_scripts.evaluate --runs-dir runs/disjunction_study --instruction-set seen --device cuda
+uv run python -m minigrid.custom_scripts.evaluate --runs-dir runs/disjunction_study --instruction-set unseen --device cuda
+```
+
+Outputs default to `results/evaluation_disjunction_seen/<run>/` and
+`results/evaluation_disjunction_unseen/<run>/`. Evaluation reads the family from
+the checkpoint; no evaluation family flag is needed. Use `--checkpoint` for one
+model, `--tasks` to select canonical instruction IDs, or `--instruction-set
+seen-positive` / `seen-disjunction` for separate controls. Each pair uses scene
+seeds 0–19 for **each condition**, with canonical wording on even seeds and reversed
+wording on odd seeds. Thus each model gets 840 seen episodes (720 OR + 120 positive)
+and 180 unseen episodes. Evaluation replaces files in its output directory.
+
+The episode CSV adds `color_pair`, `wording_order`, `scene_condition`,
+`paired_scene`, and `first_picked_color` to the usual returns, wrong pickups,
+success, timeout, and episode length. Summary rows include each instruction,
+each scene condition, each instruction category, and overall results. The summary
+also records `first_pickup_rate` (success with no wrong pickups / all episodes).
+Common return remains `10 * success - 2 * wrong_pickups` for all reward modes.
+Compare the first-only and second-only conditions separately; the uniform-object
+choice references are 1/3 for single-alternative scenes and 2/3 for both-present.
+
+Run the additional paired-scene diagnostic without retraining:
+
+```bash
+uv run python -m minigrid.custom_scripts.evaluate --runs-dir runs/disjunction_study --instruction-set unseen --paired-scenes --device cuda
+```
+
+This writes `results/evaluation_disjunction_paired/<run>/`. For a given seed, the
+three held-out pairs and both wording orders use the **same grid and agent pose**.
+One ball from each held-out pair is present, so changing the instruction changes
+the correct ball. Each color is present in ten of the twenty scenes. This adds
+120 episodes per model (20 scenes × 3 pairs × 2 word orders). It is a separate
+diagnostic, not a replacement for the standard seen/unseen evaluation.
 
 ## Earlier broader ball-only scene comparison (deferred)
 

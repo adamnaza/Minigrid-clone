@@ -14,11 +14,11 @@ from minigrid.custom_scripts.pickup_tasks import SCENE_OBJECT_COUNTS
 def main(argv=None):
     parser = argparse.ArgumentParser(description=__doc__)
     storage = get_storage_dir()
-    parser.add_argument("--reward-mode", choices=("original", "first-pickup", "large-correct", "stop-on-wrong", "negation-study"), default="original",
+    parser.add_argument("--reward-mode", choices=("original", "first-pickup", "large-correct", "stop-on-wrong", "negation-study", "disjunction-study"), default="original",
                         help="Select reward behavior and default sweep configurations")
     parser.add_argument("--output-dir", type=Path)
-    parser.add_argument("--scene-setup", choices=tuple(SCENE_OBJECT_COUNTS), default=None,
-                        help="Defaults to mixed, or two-balls for negation-study")
+    parser.add_argument("--scene-setup", choices=(*SCENE_OBJECT_COUNTS, "three-balls"), default=None,
+                        help="Defaults to mixed; study presets select two-balls (negation) or three-balls (disjunction)")
     parser.add_argument("--correct-reward", type=float, default=None,
                         help="Correct bonus for original, first-pickup, or stop-on-wrong modes (default: 10)")
     parser.add_argument("--later-correct-reward", type=float, default=None,
@@ -43,13 +43,17 @@ def main(argv=None):
                         help="Print commands without starting training or creating output files")
     args = parser.parse_args(argv)
     study = args.reward_mode == "negation-study"
-    args.scene_setup = args.scene_setup or ("two-balls" if study else "mixed")
-    if study:
-        if args.scene_setup != "two-balls" or args.recurrence != 1:
-            parser.error("negation-study uses two-balls and no memory (--recurrence 1)")
+    disjunction = args.reward_mode == "disjunction-study"
+    args.scene_setup = args.scene_setup or ("three-balls" if disjunction else "two-balls" if study else "mixed")
+    if args.scene_setup == "three-balls" and not disjunction:
+        parser.error("three-balls requires --reward-mode disjunction-study")
+    if study or disjunction:
+        expected_scene = "three-balls" if disjunction else "two-balls"
+        if args.scene_setup != expected_scene or args.recurrence != 1:
+            parser.error(f"{args.reward_mode} uses {expected_scene} and no memory (--recurrence 1)")
         if any(v is not None for v in (args.correct_reward, args.later_correct_reward,
                                        args.wrong_rewards, args.step_penalties)):
-            parser.error("negation-study has a fixed eight-configuration reward matrix; omit reward overrides")
+            parser.error(f"{args.reward_mode} has a fixed reward matrix; omit reward overrides")
     if args.reward_mode == "large-correct" and args.correct_reward is not None:
         parser.error("large-correct uses its own fixed +30 bonus; omit --correct-reward")
     if args.later_correct_reward is not None and args.reward_mode != "original":
@@ -94,6 +98,11 @@ def main(argv=None):
             (-2.0, -1.0, 10.0, None, False, True),
             (-2.0, -0.1, 10.0, None, False, True),
         ]
+    elif disjunction:
+        sweep_name = "disjunction_study"
+        configurations = [(-2.0, step, 10.0, None, first_only, stop)
+                          for first_only, stop in ((False, True), (True, False), (False, False))
+                          for step in (-0.1, -1.0)]
     elif args.scene_setup != "mixed":
         sweep_name += "_" + args.scene_setup.replace("-", "_")
     output_dir = (args.output_dir or storage / sweep_name).resolve()
@@ -121,10 +130,14 @@ def main(argv=None):
             model_name += f"_recurrence{args.recurrence}"
         if args.scene_setup != "mixed":
             model_name += "_" + args.scene_setup.replace("-", "_")
+        if disjunction:
+            model_name += "_disjunction"
         command = [sys.executable, "-m", "minigrid.custom_scripts.train",
                    "--agent", agent, "--model", model_name,
                    "--correct-reward", str(correct_reward), "--wrong-reward", str(wrong_reward),
                    "--step-cost", str(step_cost)]
+        if disjunction:
+            command.extend(["--task-family", "disjunction"])
         if first_only:
             command.append("--first-pickup-reward-only")
         if terminate_on_wrong_pickup:

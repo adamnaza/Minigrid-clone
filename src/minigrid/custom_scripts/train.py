@@ -6,7 +6,7 @@ from pathlib import Path
 import sys
 import torch
 
-from minigrid.custom_scripts import TRAIN_ENV
+from minigrid.custom_scripts import TRAIN_ENV, DISJUNCTION_ENV
 from minigrid.custom_scripts.pickup_tasks import CONFIG, REWARD_DEFAULTS, SCENE_OBJECT_COUNTS, get_training_tasks
 from minigrid.custom_scripts import get_storage_dir
 
@@ -29,8 +29,9 @@ parser = argparse.ArgumentParser()
 # General parameters
 parser.add_argument("--algo", default="ppo",
                     help="algorithm (custom pilot uses ppo)")
-parser.add_argument("--env", default=TRAIN_ENV,
+parser.add_argument("--env", default=None,
                     help="registered custom training environment")
+parser.add_argument("--task-family", choices=("negation", "disjunction"), default="negation")
 parser.add_argument("--model", default=None,
                     help="name of the model (default: {ENV}_{ALGO}_{TIME})")
 parser.add_argument("--seed", type=int, default=1,
@@ -86,7 +87,7 @@ parser.add_argument("--later-correct-reward", type=float, default=None,
                     help="Correct-pickup bonus after a wrong pickup; defaults to --correct-reward")
 parser.add_argument("--terminate-on-wrong-pickup", action="store_true",
                     help="End the episode with failure when an incorrect object is picked up")
-parser.add_argument("--scene-setup", choices=tuple(SCENE_OBJECT_COUNTS), default="mixed")
+parser.add_argument("--scene-setup", choices=(*SCENE_OBJECT_COUNTS, "three-balls"), default=None)
 for name, default in REWARD_DEFAULTS.items():
     parser.add_argument("--" + name.replace("_", "-"), type=float, default=default)
 parser.add_argument("--checkpoint-frames", type=int, nargs="*", default=[1000000, 2000000, 3000000],
@@ -95,15 +96,25 @@ parser.add_argument("--checkpoint-frames", type=int, nargs="*", default=[1000000
 if __name__ == "__main__":
     args = parser.parse_args()
 
+    disjunction = args.task_family == "disjunction"
+    expected_env = DISJUNCTION_ENV if disjunction else TRAIN_ENV
+    args.env = args.env or expected_env
+    args.scene_setup = args.scene_setup or ("three-balls" if disjunction else "mixed")
+    if args.env != expected_env or (args.scene_setup == "three-balls") != disjunction:
+        parser.error("Environment and scene setup must match --task-family")
+
     # get reward config from pickup_tasks.py
     reward_config = {name: getattr(args, name) for name in REWARD_DEFAULTS}
     reward_config["first_pickup_reward_only"] = args.first_pickup_reward_only
     reward_config["later_correct_reward"] = args.later_correct_reward
     reward_config["terminate_on_wrong_pickup"] = args.terminate_on_wrong_pickup
     reward_config["scene_setup"] = args.scene_setup
-    training_tasks = get_training_tasks(args.scene_setup)
-    environment_config = {**CONFIG, "scene_setup": args.scene_setup,
-                          "objects": SCENE_OBJECT_COUNTS[args.scene_setup]}
+    if disjunction:
+        from minigrid.custom_scripts.disjunction_tasks import CONFIG as environment_config, TRAIN_TASKS as training_tasks
+    else:
+        training_tasks = get_training_tasks(args.scene_setup)
+        environment_config = {**CONFIG, "scene_setup": args.scene_setup,
+                              "objects": SCENE_OBJECT_COUNTS[args.scene_setup]}
     if args.first_pickup_reward_only and args.later_correct_reward not in (None, 0):
         parser.error("--first-pickup-reward-only requires a zero later-correct reward")
     torch.set_num_threads(args.threads)
@@ -135,6 +146,8 @@ if __name__ == "__main__":
         parser.error("Checkpoint reward mode differs; use a new --model name or match --first-pickup-reward-only")
     if "model_state" in status:
         saved = status.get("training_config", {})
+        if saved.get("task_family", "negation") != args.task_family:
+            parser.error("Checkpoint task_family differs; use a new --model name")
         for name, default in {**REWARD_DEFAULTS, "later_correct_reward": None,
                               "terminate_on_wrong_pickup": False, "scene_setup": "mixed"}.items():
             if saved.get(name, default) != reward_config[name]:

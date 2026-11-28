@@ -16,14 +16,12 @@ class TaskDesc(ObjDesc):
 
     # override find_matching_objs to handle negative instruction types
     # if instruction is positive type, use original implementation
-    # if instruction is negative type, filter out the object+color combo that is negated
+    # Otherwise filter candidates using the task predicate (negation or disjunction).
     def find_matching_objs(self, env, use_location=True):
         super().find_matching_objs(env, use_location)
-        # ObjDesc already handles type/positive color. Filter the excluded color.
-        if self.task.kind == "negative" and use_location:
-            # find objects that satisfy the target object
-            # if negative instruction, the Task.matches() function in pickup_tasks.py
-            #   has been updated to match other objects to the negative instruction
+        # ObjDesc handles type/positive color; task.matches handles other predicates.
+        if self.task.kind != "positive" and use_location:
+            # Keep matching objects and their corresponding positions together.
             pairs = [(obj, pos) for obj, pos in zip(self.obj_set, self.obj_poss)
                      if self.task.matches(obj)]
             
@@ -46,6 +44,9 @@ class TaskPickupInstr(PickupInstr):
 
 
 class PickupNegation(PickupDist):
+    task_family = "negation"
+    task_by_id = TASK_BY_ID
+
     def __init__(self, render_mode=None,
                  correct_reward=REWARD_DEFAULTS["correct_reward"],
                  wrong_reward=REWARD_DEFAULTS["wrong_reward"],
@@ -85,7 +86,7 @@ class PickupNegation(PickupDist):
         self.had_wrong_pickup = False
         # Evaluation can select a task; ordinary resets still sample training tasks.
         task_id = (options or {}).get("task")
-        self._selected_task = TASK_BY_ID[task_id] if task_id is not None else None
+        self._selected_task = self.task_by_id[task_id] if task_id is not None else None
         if self.scene_setup != "mixed" and self._selected_task is not None and self._selected_task.object_type != "ball":
             raise ValueError("Ball-only scenes require a ball instruction")
         return super().reset(seed=seed, options=options)
@@ -94,9 +95,12 @@ class PickupNegation(PickupDist):
     def _gen_grid(self, width, height):
         # MiniGrid has seeded its RNG before calling this method. Select once,
         # outside RoomGridLevel's rejection loop, so retries cannot change the task.
-        self.task = self._selected_task or self._rand_elem(self.training_tasks)
+        self.task = self._selected_task or self._sample_task()
         # calls our gen_mission override to create environments
         super()._gen_grid(width, height)
+
+    def _sample_task(self):
+        return self._rand_elem(self.training_tasks)
 
 
     def gen_mission(self):
